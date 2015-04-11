@@ -471,6 +471,11 @@ private[sql] case class ParquetRelation2(
     val useCache = sqlContext.getConf(SQLConf.PARQUET_CACHE_METADATA, "true").toBoolean
     jobConf.set(SQLConf.PARQUET_CACHE_METADATA, useCache.toString)
 
+    // Allow SplitStrategy to be set in SparkConf
+    val taskSideMetaData =
+      sqlContext.getConf(SQLConf.PARQUET_TASK_SIDE_METADATA, "true")
+    jobConf.set(ParquetInputFormat.TASK_SIDE_METADATA, taskSideMetaData)
+
     val baseRDD =
       new NewHadoopRDD(
           sparkContext,

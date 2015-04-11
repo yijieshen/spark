@@ -126,19 +126,25 @@ if [ ! $(command -v "$MVN") ] ; then
     exit -1;
 fi
 
-VERSION=$("$MVN" help:evaluate -Dexpression=project.version 2>/dev/null | grep -v "INFO" | tail -n 1)
-SCALA_VERSION=$("$MVN" help:evaluate -Dexpression=scala.binary.version $@ 2>/dev/null\
-    | grep -v "INFO"\
-    | tail -n 1)
-SPARK_HADOOP_VERSION=$("$MVN" help:evaluate -Dexpression=hadoop.version $@ 2>/dev/null\
-    | grep -v "INFO"\
-    | tail -n 1)
-SPARK_HIVE=$("$MVN" help:evaluate -Dexpression=project.activeProfiles -pl sql/hive $@ 2>/dev/null\
-    | grep -v "INFO"\
-    | fgrep --count "<id>hive</id>";\
-    # Reset exit status to 0, otherwise the script stops here if the last grep finds nothing\
-    # because we use "set -o pipefail"
-    echo -n)
+VERSION="1.4.0-SNAPSHOT"
+SCALA_VERSION="2.10.4"
+SPARK_HADOOP_VERSION="2.4.0"
+SPARK_HIVE="1"
+
+
+#VERSION=$("$MVN" help:evaluate -Dexpression=project.version 2>/dev/null | grep -v "INFO" | tail -n 1)
+#SCALA_VERSION=$("$MVN" help:evaluate -Dexpression=scala.binary.version $@ 2>/dev/null\
+#    | grep -v "INFO"\
+#    | tail -n 1)
+#SPARK_HADOOP_VERSION=$("$MVN" help:evaluate -Dexpression=hadoop.version $@ 2>/dev/null\
+#    | grep -v "INFO"\
+#    | tail -n 1)
+#SPARK_HIVE=$("$MVN" help:evaluate -Dexpression=project.activeProfiles -pl sql/hive $@ 2>/dev/null\
+#    | grep -v "INFO"\
+#    | fgrep --count "<id>hive</id>";\
+#    # Reset exit status to 0, otherwise the script stops here if the last grep finds nothing\
+#    # because we use "set -o pipefail"
+#    echo -n)
 
 JAVA_CMD="$JAVA_HOME"/bin/java
 JAVA_VERSION=$("$JAVA_CMD" -version 2>&1)
@@ -188,7 +194,7 @@ BUILD_COMMAND=("$MVN" clean package -DskipTests $@)
 echo -e "\nBuilding with..."
 echo -e "\$ ${BUILD_COMMAND[@]}\n"
 
-"${BUILD_COMMAND[@]}"
+#"${BUILD_COMMAND[@]}"
 
 # Make directories
 rm -rf "$DISTDIR"

@@ -538,7 +538,7 @@ private[parquet] class FilteringParquetRowInputFormat
       val parquetMetaData = footer.getParquetMetadata
       val blocks = parquetMetaData.getBlocks
       totalRowGroups = totalRowGroups + blocks.size
-      val filteredBlocks = RowGroupFilter.filterRowGroups(
+      val filteredBlocks = ParquetRowGroupFilter.filterRowGroups(
         filter,
         blocks,
         parquetMetaData.getFileMetaData.getSchema)
@@ -568,11 +568,11 @@ private[parquet] class FilteringParquetRowInputFormat
 
     if (rowGroupsDropped > 0 && totalRowGroups > 0){
       val percentDropped = ((rowGroupsDropped/totalRowGroups.toDouble) * 100).toInt
-      logInfo(s"Dropping $rowGroupsDropped row groups that do not pass filter predicate "
+      logWarning(s"Dropping $rowGroupsDropped row groups that do not pass filter predicate "
         + s"($percentDropped %) !")
     }
     else {
-      logInfo("There were no row groups that could be dropped due to filter predicates")
+      logWarning("There were no row groups that could be dropped due to filter predicates")
     }
     splits
 

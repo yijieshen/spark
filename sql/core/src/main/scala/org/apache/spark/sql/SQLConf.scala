@@ -35,6 +35,7 @@ private[spark] object SQLConf {
   val PARQUET_BINARY_AS_STRING = "spark.sql.parquet.binaryAsString"
   val PARQUET_INT96_AS_TIMESTAMP = "spark.sql.parquet.int96AsTimestamp"
   val PARQUET_CACHE_METADATA = "spark.sql.parquet.cacheMetadata"
+  val PARQUET_TASK_SIDE_METADATA = "spark.sql.parquet.task.side.metadata"
   val PARQUET_COMPRESSION = "spark.sql.parquet.compression.codec"
   val PARQUET_FILTER_PUSHDOWN_ENABLED = "spark.sql.parquet.filterPushdown"
   val PARQUET_USE_DATA_SOURCE_API = "spark.sql.parquet.useDataSourceApi"
