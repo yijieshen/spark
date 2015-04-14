@@ -37,7 +37,7 @@ class ParquetRowGroupFilter(
     private val blocks: JList[BlockMetaData],
     private val schema: MessageType) extends Visitor[JList[BlockMetaData]] with Logging{
 
-  def visit(filterPredicateCompat: FilterPredicateCompat) = {
+  def visit(filterPredicateCompat: FilterPredicateCompat): JList[BlockMetaData] = {
     val filterPredicate: FilterPredicate = filterPredicateCompat.getFilterPredicate
 
     // check that the schema of the filter matches the schema of the file
@@ -53,13 +53,15 @@ class ParquetRowGroupFilter(
     filteredBlocks
   }
 
-  def visit(unboundRecordFilterCompat: UnboundRecordFilterCompat) = blocks
+  def visit(unboundRecordFilterCompat: UnboundRecordFilterCompat): JList[BlockMetaData] = blocks
 
-  def visit(noOpFilter: NoOpFilter) = blocks
+  def visit(noOpFilter: NoOpFilter): JList[BlockMetaData] = blocks
 }
 
 object ParquetRowGroupFilter {
-  def filterRowGroups(filter: Filter, blocks: JList[BlockMetaData], schema: MessageType) = {
+  def filterRowGroups(filter: Filter,
+      blocks: JList[BlockMetaData],
+      schema: MessageType): JList[BlockMetaData] = {
     checkNotNull(filter, "filter");
     filter.accept(new ParquetRowGroupFilter(blocks, schema));
   }
