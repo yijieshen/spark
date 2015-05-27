@@ -39,7 +39,7 @@ import org.apache.spark.util.Utils
 @JsonInclude(Include.NON_NULL)
 @JsonAutoDetect(getterVisibility = Visibility.ANY, setterVisibility = Visibility.ANY)
 @JsonPropertyOrder(alphabetic = true)
-private[rest] abstract class SubmitRestProtocolMessage {
+abstract class SubmitRestProtocolMessage {
   @JsonIgnore
   val messageType = Utils.getFormattedClassName(this)
 
@@ -97,7 +97,7 @@ private[rest] abstract class SubmitRestProtocolMessage {
 /**
  * Helper methods to process serialized [[SubmitRestProtocolMessage]]s.
  */
-private[spark] object SubmitRestProtocolMessage {
+object SubmitRestProtocolMessage {
   private val packagePrefix = this.getClass.getPackage.getName
   private val mapper = new ObjectMapper()
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
