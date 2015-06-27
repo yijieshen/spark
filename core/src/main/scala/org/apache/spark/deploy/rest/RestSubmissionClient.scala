@@ -52,7 +52,7 @@ import org.apache.spark.util.Utils
  * implementation of this client can use that information to retry using the version specified
  * by the server.
  */
-private[spark] class RestSubmissionClient(master: String) extends Logging {
+class RestSubmissionClient(master: String) extends Logging {
   import RestSubmissionClient._
 
   private val supportedMasterPrefixes = Seq("spark://", "mesos://")
@@ -378,7 +378,7 @@ private[spark] class RestSubmissionClient(master: String) extends Logging {
   }
 }
 
-private[spark] object RestSubmissionClient {
+object RestSubmissionClient {
   private val REPORT_DRIVER_STATUS_INTERVAL = 1000
   private val REPORT_DRIVER_STATUS_MAX_TRIES = 10
   val PROTOCOL_VERSION = "v1"
