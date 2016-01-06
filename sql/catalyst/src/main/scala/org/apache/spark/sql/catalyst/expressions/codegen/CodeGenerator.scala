@@ -27,7 +27,9 @@ import org.codehaus.janino.ClassBodyEvaluator
 import org.apache.spark.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.vector._
 import org.apache.spark.sql.catalyst.util.{MapData, ArrayData}
+import org.apache.spark.sql.catalyst.vector._
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.types._
@@ -43,6 +45,14 @@ import org.apache.spark.util.Utils
  *              valid if `isNull` is set to `true`.
  */
 case class GeneratedExpressionCode(var code: String, var isNull: String, var value: String)
+
+/**
+ * Java source for evaluating an [[vector.BatchExpression]] given a [[RowBatch]] of input.
+ *
+ * @param code The sequence of statements required to evaluate the expression.
+ * @param value A term for a (possibly primitive) value of the result of the evaluation.
+ */
+case class GeneratedBatchExpressionCode(var code: String, var value: String)
 
 /**
  * A context for codegen, which is used to bookkeeping the expressions those are not supported
@@ -103,11 +113,19 @@ class CodeGenContext {
    */
   val equivalentExpressions: EquivalentExpressions = new EquivalentExpressions
 
+  val equivalentBatchExpressions: EquivalentBatchExpressions = new EquivalentBatchExpressions
+
   // State used for subexpression elimination.
   case class SubExprEliminationState(isNull: String, value: String)
 
+  // State used for batch expressions' subexpr elimination
+  case class SubBExprEliminationState(value: String)
+
   // Foreach expression that is participating in subexpression elimination, the state to use.
   val subExprEliminationExprs = mutable.HashMap.empty[Expression, SubExprEliminationState]
+
+  // Foreach expression that is participating in subexpression elimination, the state to use.
+  val subBExprEliminationExprs = mutable.HashMap.empty[BatchExpression, SubBExprEliminationState]
 
   // The collection of sub-exression result resetting methods that need to be called on each row.
   val subExprResetVariables = mutable.ArrayBuffer.empty[String]
@@ -122,6 +140,8 @@ class CodeGenContext {
 
   /** The variable name of the input row in generated code. */
   final val INPUT_ROW = "i"
+
+  final val INPUT_ROWBATCH = "rb"
 
   private val curId = new java.util.concurrent.atomic.AtomicInteger()
 
@@ -202,6 +222,14 @@ class CodeGenContext {
     case ObjectType(cls) if cls.isArray => s"${javaType(ObjectType(cls.getComponentType))}[]"
     case ObjectType(cls) => cls.getName
     case _ => "Object"
+  }
+
+  def cvType(dt: DataType): String = dt match {
+    case IntegerType => classOf[IntColumnVector].getName
+    case LongType => classOf[LongColumnVector].getName
+    case DoubleType => classOf[DoubleColumnVector].getName
+    case StringType => classOf[StringColumnVector].getName
+    case _ => "UnSupport"
   }
 
   /**
@@ -458,6 +486,70 @@ class CodeGenContext {
     if (doSubexpressionElimination) subexpressionElimination(expressions)
     expressions.map(e => e.gen(this))
   }
+
+  /**
+    * Checks and sets up the state and codegen for subexpression elimination. This finds the
+    * common subexpresses, generates the functions that evaluate those expressions and populates
+    * the mapping of common subexpressions to the generated functions.
+    */
+  private def subBatchExpressionElimination(batchExprs: Seq[BatchExpression]) = {
+    // Add each expression tree and compute the common subexpressions.
+    batchExprs.foreach(equivalentBatchExpressions.addExprTree(_))
+
+    // Get all the exprs that appear at least twice and set up the state for subexpression
+    // elimination.
+    val commonExprs = equivalentBatchExpressions.getAllEquivalentExprs.filter(_.size > 1)
+    commonExprs.foreach(e => {
+      val expr = e.head
+      val value = freshName("value")
+      val fnName = freshName("evalExpr")
+
+      // Generate the code for this expression tree and wrap it in a function.
+      val code = expr.gen(this)
+      val fn =
+        s"""
+           |private void $fnName(RowBatch $INPUT_ROWBATCH) {
+           |  ${code.code.trim}
+           |  $value = ${code.value};
+           |}
+           """.stripMargin
+
+      addNewFunction(fnName, fn)
+
+      // Add a state and a mapping of the common subexpressions that are associate with this
+      // state. Adding this expression to subExprEliminationExprMap means it will call `fn`
+      // when it is code generated. This decision should be a cost based one.
+      //
+      // The cost of doing subexpression elimination is:
+      //   1. Extra function call, although this is probably *good* as the JIT can decide to
+      //      inline or not.
+      //   2. Extra branch to check isLoaded. This branch is likely to be predicted correctly
+      //      very often. The reason it is not loaded is because of a prior branch.
+      //   3. Extra store into isLoaded.
+      // The benefit doing subexpression elimination is:
+      //   1. Running the expression logic. Even for a simple expression, it is likely more than 3
+      //      above.
+      //   2. Less code.
+      // Currently, we will do this for all non-leaf only expression trees (i.e. expr trees with
+      // at least two nodes) as the cost of doing it is expected to be low.
+      addMutableState(cvType(expr.dataType), value, s"$value = null;")
+      subExprResetVariables += s"$fnName($INPUT_ROWBATCH);"
+      val state = SubBExprEliminationState(value)
+      e.foreach(subBExprEliminationExprs.put(_, state))
+    })
+  }
+
+  /**
+    * Generates code for expressions. If doSubexpressionElimination is true, subexpression
+    * elimination will be performed. Subexpression elimination assumes that the code will for each
+    * expression will be combined in the `expressions` order.
+    */
+  def generateBatchExpressions(expressions: Seq[BatchExpression],
+    doSubexpressionElimination: Boolean = false): Seq[GeneratedBatchExpressionCode] = {
+    if (doSubexpressionElimination) subBatchExpressionElimination(expressions)
+    expressions.map(e => e.gen(this))
+  }
+
 }
 
 /**
@@ -466,6 +558,15 @@ class CodeGenContext {
  */
 abstract class GeneratedClass {
   def generate(expressions: Array[Expression]): Any
+}
+
+/**
+ * A wrapper for generated class related to vectorize,
+ * defines a `generate` method so that we can pass extra objects
+ * into generated class.
+ */
+abstract class RowBatchConverterGeneratedClass {
+  def generate(types: Array[DataType]): Any
 }
 
 /**
@@ -516,6 +617,13 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
   }
 
   /**
+    * Compile the Java source code into a Java class, using Janino.
+    */
+  protected def rowBatchConverterCompile(code: String): RowBatchConverterGeneratedClass = {
+    rowBatchConverterCache.get(code)
+  }
+
+  /**
    * Compile the Java source code into a Java class, using Janino.
    */
   private[this] def doCompile(code: String): GeneratedClass = {
@@ -534,7 +642,9 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
       classOf[UnsafeArrayData].getName,
       classOf[MapData].getName,
       classOf[UnsafeMapData].getName,
-      classOf[MutableRow].getName
+      classOf[MutableRow].getName,
+      classOf[RowBatch].getName,
+      classOf[ColumnVector].getName
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
 
@@ -558,6 +668,50 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
   }
 
   /**
+    * Compile the Java source code into a Java class, using Janino.
+    */
+  private[this] def doRBConverterCompile(code: String): RowBatchConverterGeneratedClass = {
+    val evaluator = new ClassBodyEvaluator()
+    evaluator.setParentClassLoader(Utils.getContextOrSparkClassLoader)
+    // Cannot be under package codegen, or fail with java.lang.InstantiationException
+    evaluator.setClassName("org.apache.spark.sql.catalyst.expressions.GeneratedClass")
+    evaluator.setDefaultImports(Array(
+      classOf[Platform].getName,
+      classOf[InternalRow].getName,
+      classOf[UnsafeRow].getName,
+      classOf[UTF8String].getName,
+      classOf[Decimal].getName,
+      classOf[CalendarInterval].getName,
+      classOf[ArrayData].getName,
+      classOf[UnsafeArrayData].getName,
+      classOf[MapData].getName,
+      classOf[UnsafeMapData].getName,
+      classOf[MutableRow].getName,
+      classOf[RowBatch].getName,
+      classOf[ColumnVector].getName
+    ))
+    evaluator.setExtendedClass(classOf[RowBatchConverterGeneratedClass])
+
+    def formatted = CodeFormatter.format(code)
+
+    logDebug({
+      // Only add extra debugging info to byte code when we are going to print the source code.
+      evaluator.setDebuggingInformation(true, true, false)
+      formatted
+    })
+
+    try {
+      evaluator.cook("generated.java", code)
+    } catch {
+      case e: Exception =>
+        val msg = s"failed to compile: $e\n$formatted"
+        logError(msg, e)
+        throw new Exception(msg, e)
+    }
+    evaluator.getClazz().newInstance().asInstanceOf[RowBatchConverterGeneratedClass]
+  }
+
+  /**
    * A cache of generated classes.
    *
    * From the Guava Docs: A Cache is similar to ConcurrentMap, but not quite the same. The most
@@ -573,6 +727,20 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
         override def load(code: String): GeneratedClass = {
           val startTime = System.nanoTime()
           val result = doCompile(code)
+          val endTime = System.nanoTime()
+          def timeMs: Double = (endTime - startTime).toDouble / 1000000
+          logInfo(s"Code generated in $timeMs ms")
+          result
+        }
+      })
+
+  private val rowBatchConverterCache = CacheBuilder.newBuilder()
+    .maximumSize(100)
+    .build(
+      new CacheLoader[String, RowBatchConverterGeneratedClass]() {
+        override def load(code: String): RowBatchConverterGeneratedClass = {
+          val startTime = System.nanoTime()
+          val result = doRBConverterCompile(code)
           val endTime = System.nanoTime()
           def timeMs: Double = (endTime - startTime).toDouble / 1000000
           logInfo(s"Code generated in $timeMs ms")

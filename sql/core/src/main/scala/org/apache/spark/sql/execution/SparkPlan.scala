@@ -19,10 +19,12 @@ package org.apache.spark.sql.execution
 
 import java.util.concurrent.atomic.AtomicBoolean
 
+import org.apache.spark.sql.catalyst.vector.RowBatch
+
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.Logging
-import org.apache.spark.rdd.{RDD, RDDOperationScope}
+import org.apache.spark.rdd.{EmptyRDD, RDD, RDDOperationScope}
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
 import org.apache.spark.sql.catalyst.expressions._
@@ -109,6 +111,15 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    */
   def canProcessSafeRows: Boolean = true
 
+  /** Specifies whether this operator outputs RowBatches */
+  def outputRowBatches: Boolean = false
+
+  /** Specifies whether this operator is capable of processing RowBatches */
+  def canProcessRowBatches: Boolean = false
+
+  /** Specifies whether this operator is capable of processing Rows/UnsafeRows */
+  def canProcessRows: Boolean = canProcessSafeRows || canProcessUnsafeRows
+
   /**
    * Returns the result of this query as an RDD[InternalRow] by delegating to doExecute
    * after adding query plan information to created RDDs for visualization.
@@ -132,6 +143,22 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
       doExecute()
     }
   }
+
+  final def batchExecute(): RDD[RowBatch] = {
+    if (children.nonEmpty) {
+      val hasRowInput = children.exists(_.outputRowBatches)
+      val hasRowBatchInput = children.exists(!_.outputRowBatches)
+      assert(!(hasRowInput && hasRowBatchInput),
+        "Child operators should output rows or batches")
+      // TODO: more checks here
+    }
+    RDDOperationScope.withScope(sparkContext, nodeName, false, true) {
+      prepare()
+      doBatchExecute()
+    }
+  }
+
+  protected def doBatchExecute(): RDD[RowBatch] = new EmptyRDD[RowBatch](sparkContext)
 
   /**
    * Prepare a SparkPlan for execution. It's idempotent.
