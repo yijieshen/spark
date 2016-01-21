@@ -26,6 +26,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow, expressions}
 import org.apache.spark.sql.execution.PhysicalRDD.{INPUT_PATHS, PUSHED_FILTERS}
 import org.apache.spark.sql.execution.SparkPlan
@@ -39,7 +40,7 @@ import org.apache.spark.{Logging, TaskContext}
 /**
  * A Strategy for planning scans over data sources defined using the sources API.
  */
-private[sql] object DataSourceStrategy extends Strategy with Logging {
+private[sql] case class DataSourceStrategy(sqlContext: SQLContext) extends Strategy with Logging {
   def apply(plan: LogicalPlan): Seq[execution.SparkPlan] = plan match {
     case PhysicalOperation(projects, filters, l @ LogicalRelation(t: CatalystScan, _)) =>
       pruneFilterProjectRaw(
@@ -98,6 +99,20 @@ private[sql] object DataSourceStrategy extends Strategy with Logging {
       combineFilters
         .reduceLeftOption(expressions.And)
         .map(execution.Filter(_, scan)).getOrElse(scan) :: Nil
+
+    // Scanning non-partitioned HadoopFsRelation
+    case PhysicalOperation(projects, filters, l @ LogicalRelation(t: HadoopFsRelation, _))
+        if (sqlContext.conf.vectorizedExecutionEnabled() && t.canOutputRowBatches) =>
+      // See buildPartitionedTableScan for the reason that we need to create a shard
+      // broadcast HadoopConf.
+      val sharedHadoopConf = SparkHadoopUtil.get.conf
+      val confBroadcast =
+        t.sqlContext.sparkContext.broadcast(new SerializableConfiguration(sharedHadoopConf))
+      pruneFilterProject2(
+        l,
+        projects,
+        filters,
+        (a, f) => t.buildInternalBatchScan(a.map(_.name).toArray, f, t.paths, confBroadcast)) :: Nil
 
     // Scanning non-partitioned HadoopFsRelation
     case PhysicalOperation(projects, filters, l @ LogicalRelation(t: HadoopFsRelation, _)) =>
@@ -273,6 +288,112 @@ private[sql] object DataSourceStrategy extends Strategy with Logging {
       (requestedColumns, _, pushedFilters) => {
         scanBuilder(requestedColumns, pushedFilters.toArray)
       })
+  }
+
+  // Based on Public API.
+  protected def pruneFilterProject2(
+    relation: LogicalRelation,
+    projects: Seq[NamedExpression],
+    filterPredicates: Seq[Expression],
+    scanBuilder: (Seq[Attribute], Array[Filter]) => RDD[RowBatch]) = {
+    pruneFilterProjectRaw2(
+      relation,
+      projects,
+      filterPredicates,
+      (requestedColumns, _, pushedFilters) => {
+        scanBuilder(requestedColumns, pushedFilters.toArray)
+      })
+  }
+
+  // Based on Catalyst expressions. The `scanBuilder` function accepts three arguments:
+  //
+  //  1. A `Seq[Attribute]`, containing all required column attributes. Used to handle relation
+  //     traits that support column pruning (e.g. `PrunedScan` and `PrunedFilteredScan`).
+  //
+  //  2. A `Seq[Expression]`, containing all gathered Catalyst filter expressions, only used for
+  //     `CatalystScan`.
+  //
+  //  3. A `Seq[Filter]`, containing all data source `Filter`s that are converted from (possibly a
+  //     subset of) Catalyst filter expressions and can be handled by `relation`.  Used to handle
+  //     relation traits (`CatalystScan` excluded) that support filter push-down (e.g.
+  //     `PrunedFilteredScan` and `HadoopFsRelation`).
+  //
+  // Note that 2 and 3 shouldn't be used together.
+  protected def pruneFilterProjectRaw2(
+    relation: LogicalRelation,
+    projects: Seq[NamedExpression],
+    filterPredicates: Seq[Expression],
+    scanBuilder: (Seq[Attribute], Seq[Expression], Seq[Filter]) => RDD[RowBatch]) = {
+
+    val projectSet = AttributeSet(projects.flatMap(_.references))
+    val filterSet = AttributeSet(filterPredicates.flatMap(_.references))
+
+    val candidatePredicates = filterPredicates.map { _ transform {
+      case a: AttributeReference => relation.attributeMap(a) // Match original case of attributes.
+    }}
+
+    val (unhandledPredicates, pushedFilters) =
+      selectFilters(relation.relation, candidatePredicates)
+
+    // A set of column attributes that are only referenced by pushed down filters.  We can eliminate
+    // them from requested columns.
+    val handledSet = {
+      val handledPredicates = filterPredicates.filterNot(unhandledPredicates.contains)
+      val unhandledSet = AttributeSet(unhandledPredicates.flatMap(_.references))
+      AttributeSet(handledPredicates.flatMap(_.references)) --
+        (projectSet ++ unhandledSet).map(relation.attributeMap)
+    }
+
+    // Combines all Catalyst filter `Expression`s that are either not convertible to data source
+    // `Filter`s or cannot be handled by `relation`.
+    val filterCondition = unhandledPredicates.reduceLeftOption(expressions.And)
+
+    val metadata: Map[String, String] = {
+      val pairs = ArrayBuffer.empty[(String, String)]
+
+      if (pushedFilters.nonEmpty) {
+        pairs += (PUSHED_FILTERS -> pushedFilters.mkString("[", ", ", "]"))
+      }
+
+      relation.relation match {
+        case r: HadoopFsRelation => pairs += INPUT_PATHS -> r.paths.mkString(", ")
+        case _ =>
+      }
+
+      pairs.toMap
+    }
+
+    if (projects.map(_.toAttribute) == projects &&
+      projectSet.size == projects.size &&
+      filterSet.subsetOf(projectSet)) {
+      // When it is possible to just use column pruning to get the right projection and
+      // when the columns of this projection are enough to evaluate all filter conditions,
+      // just do a scan followed by a filter, with no extra project.
+      val requestedColumns = projects
+        // Safe due to if above.
+        .asInstanceOf[Seq[Attribute]]
+        // Match original case of attributes.
+        .map(relation.attributeMap)
+        // Don't request columns that are only referenced by pushed filters.
+        .filterNot(handledSet.contains)
+
+      val scan = execution.vector.PhysicalBatchRDD.createFromDataSource(
+        projects.map(_.toAttribute),
+        scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
+        relation.relation, metadata)
+      filterCondition.map(execution.vector.BatchFilter(_, scan)).getOrElse(scan)
+    } else {
+      // Don't request columns that are only referenced by pushed filters.
+      val requestedColumns =
+        (projectSet ++ filterSet -- handledSet).map(relation.attributeMap).toSeq
+
+      val scan = execution.vector.PhysicalBatchRDD.createFromDataSource(
+        requestedColumns,
+        scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
+        relation.relation, metadata)
+      execution.vector.BatchProject(
+        projects, filterCondition.map(execution.vector.BatchFilter(_, scan)).getOrElse(scan))
+    }
   }
 
   // Based on Catalyst expressions. The `scanBuilder` function accepts three arguments:

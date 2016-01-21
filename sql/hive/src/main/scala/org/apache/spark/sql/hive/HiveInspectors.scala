@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.hive
 
+import org.apache.spark.sql.catalyst.vector.{ColumnVector, RowBatch}
+
 import scala.collection.JavaConverters._
 
 import org.apache.hadoop.hive.common.`type`.{HiveChar, HiveDecimal, HiveVarchar}
@@ -499,6 +501,37 @@ private[hive] trait HiveInspectors {
         (value: Any, row: MutableRow, ordinal: Int) => row.setDouble(ordinal, oi.get(value))
       case oi =>
         (value: Any, row: MutableRow, ordinal: Int) => row(ordinal) = unwrap(value, oi)
+    }
+
+  /**
+    * Builds specific unwrappers ahead of time according to object inspector
+    * types to avoid pattern matching and branching costs per row.
+    */
+  def unwrapperForCV(field: HiveStructField): (Any, ColumnVector, Int) => Unit =
+    field.getFieldObjectInspector match {
+      case oi: BooleanObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.put(rowId, oi.get(value))
+      case oi: ByteObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.put(rowId, oi.get(value))
+      case oi: ShortObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.put(rowId, oi.get(value))
+      case oi: IntObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.putInt(rowId, oi.get(value))
+      case oi: LongObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.putLong(rowId, oi.get(value))
+      case oi: FloatObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.put(rowId, oi.get(value))
+      case oi: DoubleObjectInspector =>
+        (value: Any, cv: ColumnVector, rowId: Int) =>
+          cv.putDouble(rowId, oi.get(value))
+      case oi =>
+        (value: Any, cv: ColumnVector, rowId: Int) => cv.put(rowId, unwrap(value, oi))
     }
 
   /**

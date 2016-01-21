@@ -1,0 +1,142 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.spark.sql.catalyst.vector;
+
+import java.io.Serializable;
+import java.util.Arrays;
+
+import org.apache.spark.sql.types.*;
+import org.apache.spark.unsafe.types.UTF8String;
+
+public class ColumnVector implements Serializable {
+
+  /*
+   * If hasNulls is true, then this array contains true if the value
+   * is null, otherwise false. The array is always allocated, so a batch can be re-used
+   * later and nulls added.
+   */
+  public boolean[] isNull;
+
+  // If the whole column vector has no nulls, this is true, otherwise false.
+  public boolean noNulls;
+
+  /*
+   * True if same value repeats for whole column vector.
+   * If so, vector[0] holds the repeating value.
+   */
+  public boolean isRepeating;
+
+  public int[] intVector;
+  public long[] longVector;
+  public double[] doubleVector;
+  public UTF8String[] stringVector;
+  public Object[] objectVector;
+
+  public DataType dataType;
+
+  public static final int intNullValue = 1;
+  public static final int intOneValue = 1;
+
+  public static final long longNullValue = 1L;
+  public static final long longOneValue = 1L;
+
+  public static final double doubleNullValue = Double.NaN;
+  public static final double doubleOneValue = 1.0;
+
+  public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
+  public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
+
+  /**
+   * Constructor for super-class ColumnVector. This is not called directly,
+   * but used to initialize inherited fields.
+   *
+   * @param capacity Vector length
+   */
+  public ColumnVector(int capacity, DataType dt) {
+    isNull = new boolean[capacity];
+    noNulls = true;
+    isRepeating = false;
+    dataType = dt;
+    if (dt instanceof IntegerType) {
+      intVector = new int[capacity];
+    } else if (dt instanceof LongType) {
+      longVector = new long[capacity];
+    } else if (dt instanceof DoubleType) {
+      doubleVector = new double[capacity];
+    } else if (dt instanceof StringType) {
+      stringVector = new UTF8String[capacity];
+    } else {
+      throw new UnsupportedOperationException(dt + "is Not supported yet");
+      // objectVector = new Object[capacity];
+    }
+  }
+
+  public ColumnVector(int capacity, String dataType) {
+    this(capacity, DataType$.MODULE$.fromString(dataType));
+  }
+
+  /**
+   * Resets the column to default state
+   *  - fills the isNull array with false
+   *  - sets noNulls to true
+   *  - sets isRepeating to false
+   */
+  public void reset() {
+    if (false == noNulls) {
+      Arrays.fill(isNull, false);
+    }
+    noNulls = true;
+    isRepeating = false;
+  }
+
+  public void putNull(int rowId) {
+    noNulls = false;
+    isNull[rowId] = true;
+  }
+
+  public void putInt(int rowId, int value) {
+    intVector[rowId] = value;
+  }
+
+  public void putLong(int rowId, long value) {
+    longVector[rowId] = value;
+  }
+
+  public void putDouble(int rowId, double value) {
+    doubleVector[rowId] = value;
+  }
+
+  public void putString(int rowId, UTF8String value) {
+    stringVector[rowId] = value;
+  }
+
+  public void put(int rowId, Object value) {
+    if (dataType instanceof IntegerType) {
+      putInt(rowId, (Integer) value);
+    } else if (dataType instanceof LongType) {
+      putLong(rowId, (Long) value);
+    } else if (dataType instanceof DoubleType) {
+      putDouble(rowId, (Double) value);
+    } else if (dataType instanceof StringType) {
+      putString(rowId, (UTF8String) value);
+    } else {
+      throw new UnsupportedOperationException(dataType + "is Not supported yet");
+      // objectVector[rowId] = value;
+    }
+  }
+}

@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.vector
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.vector.{GenerateBatchPredicate, BatchProjection}
 import org.apache.spark.sql.catalyst.vector.RowBatch
@@ -74,7 +75,7 @@ case class BatchFilter(condition: Expression, child: SparkPlan) extends UnaryNod
   protected override def doExecute(): RDD[InternalRow] =
     throw new UnsupportedOperationException(getClass.getName)
 
-  protected override def doBatchExecute(): RDD[RowBatch] = {
+  protected override def doBatchExecute(): RDD[RowBatch] = attachTree(this, "execute"){
     val numInputRows = longMetric("numInputRows")
     val numOutputRows = longMetric("numOutputRows")
     child.batchExecute().mapPartitionsInternal { iter =>

@@ -32,6 +32,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateMutableProjection
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.{FileRelation, RDDConversions}
 import org.apache.spark.sql.execution.datasources.{PartitioningUtils, PartitionSpec, Partition}
 import org.apache.spark.sql.types.{StringType, StructType}
@@ -245,6 +246,11 @@ abstract class BaseRelation {
    * @since 1.6.0
    */
   def unhandledFilters(filters: Array[Filter]): Array[Filter] = filters
+
+  /**
+   * Whether it's possible to return an [[RDD]] of [[RowBatch]]
+   */
+  def canOutputRowBatches: Boolean = false
 }
 
 /**
@@ -661,6 +667,28 @@ abstract class HadoopFsRelation private[sql](
     buildInternalScan(requiredColumns, filters, inputStatuses, broadcastedConf)
   }
 
+  final private[sql] def buildInternalBatchScan(
+    requiredColumns: Array[String],
+    filters: Array[Filter],
+    inputPaths: Array[String],
+    broadcastedConf: Broadcast[SerializableConfiguration]): RDD[RowBatch] = {
+    val inputStatuses = inputPaths.flatMap { input =>
+      val path = new Path(input)
+
+      // First assumes `input` is a directory path, and tries to get all files contained in it.
+      fileStatusCache.leafDirToChildrenFiles.getOrElse(
+        path,
+        // Otherwise, `input` might be a file path
+        fileStatusCache.leafFiles.get(path).toArray
+      ).filter { status =>
+        val name = status.getPath.getName
+        !name.startsWith("_") && !name.startsWith(".")
+      }
+    }
+
+    buildInternalBatchScan(requiredColumns, filters, inputStatuses, broadcastedConf)
+  }
+
   /**
    * Specifies schema of actual data files.  For partitioned relations, if one or more partitioned
    * columns are contained in the data files, they should also appear in `dataSchema`.
@@ -826,6 +854,15 @@ abstract class HadoopFsRelation private[sql](
       val unsafeProjection = UnsafeProjection.create(requiredSchema)
       iterator.map(unsafeProjection)
     }
+  }
+
+  private[sql] def buildInternalBatchScan(
+    requiredColumns: Array[String],
+    filters: Array[Filter],
+    inputFiles: Array[FileStatus],
+    broadcastedConf: Broadcast[SerializableConfiguration]): RDD[RowBatch] = {
+    throw new UnsupportedOperationException(
+      "buildInternalBatchScan() method should be overridden to read the relation in RowBatches.")
   }
 
   /**

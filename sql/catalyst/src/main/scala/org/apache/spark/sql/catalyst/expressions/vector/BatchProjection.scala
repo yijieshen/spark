@@ -114,6 +114,10 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
 
         public RowBatch apply(RowBatch ${ctx.INPUT_ROWBATCH}) {
           $subexprReset
+          $result.size = ${ctx.INPUT_ROWBATCH}.size;
+          $result.selected = ${ctx.INPUT_ROWBATCH}.selected;
+          $result.selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
+          $result.endOfFile = ${ctx.INPUT_ROWBATCH}.endOfFile;
           $evals
           return $result;
         }

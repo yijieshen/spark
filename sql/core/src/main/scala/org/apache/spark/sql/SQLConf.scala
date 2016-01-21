@@ -449,6 +449,12 @@ private[spark] object SQLConf {
     doc = "When true, we could use `datasource`.`path` as table in SQL query"
   )
 
+  val VECTORIZE_ENABLED = booleanConf("spark.sql.vectorize.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would execute in vectorized mode when possible"
+  )
+
   object Deprecated {
     val MAPRED_REDUCE_TASKS = "mapred.reduce.tasks"
     val EXTERNAL_SORT = "spark.sql.planner.externalSort"
@@ -566,6 +572,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
   private[spark] def dataFrameRetainGroupColumns: Boolean = getConf(DATAFRAME_RETAIN_GROUP_COLUMNS)
 
   private[spark] def runSQLOnFile: Boolean = getConf(RUN_SQL_ON_FILES)
+
+  private[spark] def vectorizedExecutionEnabled(): Boolean = getConf(VECTORIZE_ENABLED)
 
   /** ********************** SQLConf functionality methods ************ */
 

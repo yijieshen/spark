@@ -17,12 +17,15 @@
 
 package org.apache.spark.sql.execution.vector
 
+import scala.collection.JavaConverters._
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{GenericMutableRow, SortOrder, Attribute}
+import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.{SparkPlan, UnaryNode}
+import org.apache.spark.sql.types.StructType
 
 case class AssembleToRowBatch(child: SparkPlan) extends UnaryNode {
 
@@ -35,11 +38,10 @@ case class AssembleToRowBatch(child: SparkPlan) extends UnaryNode {
   override def doBatchExecute(): RDD[RowBatch] = {
     child.execute().mapPartitionsInternal { iter =>
       val schema = child.output.map(_.dataType)
-      val rb = RowBatch.create(schema)
-      val updaters = rb.updaters()
+      val rb = RowBatch.create(schema.toArray)
       val rbCapacity = rb.capacity
 
-      val specificInserter = GenerateRowInserter.generate(schema)
+      val specificInserter = GenerateRowInserter.generate(output)
 
       new Iterator[RowBatch] {
         override def hasNext: Boolean = iter.hasNext
@@ -48,7 +50,7 @@ case class AssembleToRowBatch(child: SparkPlan) extends UnaryNode {
           rb.reset()
           var rowCount: Int = 0
           while (iter.hasNext && rowCount < rbCapacity) {
-            specificInserter.insert(iter.next(), updaters)
+            specificInserter.insert(iter.next(), rb.columns, rowCount)
             rowCount += 1
           }
           rb.size = rowCount
@@ -71,39 +73,13 @@ case class DissembleFromRowBatch(child: SparkPlan) extends UnaryNode {
   override def outputPartitioning: Partitioning = child.outputPartitioning
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
   override def outputRowBatches: Boolean = false
+  override def canProcessUnsafeRows: Boolean = true
   override def canProcessRowBatches: Boolean = true
   override def canProcessRows: Boolean = false
   override def doExecute(): RDD[InternalRow] = {
     child.batchExecute().mapPartitionsInternal { iter =>
-      val schema = child.output.map(_.dataType)
-      val row = new GenericMutableRow(schema.size)
-
-      val specificGetter = GenerateRowGetter.generate(schema)
-
-      new Iterator[InternalRow] {
-        var currentRowBatch: RowBatch = null
-        var rowIdxInCurrentBatch: Int = 0
-
-        override def hasNext: Boolean = {
-          if (iter.hasNext) {
-            true
-          } else if (currentRowBatch != null && rowIdxInCurrentBatch < currentRowBatch.size) {
-            true
-          } else {
-            false
-          }
-        }
-
-        override def next(): InternalRow = {
-          if (currentRowBatch == null || rowIdxInCurrentBatch == currentRowBatch.size) {
-            currentRowBatch = iter.next()
-            rowIdxInCurrentBatch = 0
-          }
-          specificGetter.get(row, currentRowBatch.columns, rowIdxInCurrentBatch)
-          rowIdxInCurrentBatch += 1
-          row
-        }
-      }
+      val unsafeProjection = UnsafeProjection.create(StructType.fromAttributes(output))
+      iter.map(_.rowIterator().asScala).flatten.map(unsafeProjection)
     }
   }
 }

@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.vector.DissembleFromRowBatch
 
 /**
  * Converts Java-object-based rows into [[UnsafeRow]]s.
@@ -86,14 +87,29 @@ private[sql] object EnsureRowFormats extends Rule[SparkPlan] {
       if (operator.children.exists(!_.outputsUnsafeRows)) {
         operator.withNewChildren {
           operator.children.map {
-            c => if (!c.outputsUnsafeRows) ConvertToUnsafe(c) else c
+            c => if (c.outputRowBatches) {
+              DissembleFromRowBatch(c)
+            } else if (!c.outputsUnsafeRows) {
+              ConvertToUnsafe(c)
+            } else {
+              c
+            }
           }
         }
       } else {
         operator
       }
     case operator: SparkPlan if handlesBothSafeAndUnsafeRows(operator) =>
-      if (operator.children.map(_.outputsUnsafeRows).toSet.size != 1) {
+      if (operator.children.exists(_.outputRowBatches)) {
+        operator.withNewChildren {
+          operator.children.map { c =>
+            c match {
+              case c if c.outputRowBatches => DissembleFromRowBatch(c)
+              case c if !c.outputsUnsafeRows => ConvertToUnsafe(c)
+            }
+          }
+        }
+      } else if (operator.children.map(_.outputsUnsafeRows).toSet.size != 1) {
         // If this operator's children produce both unsafe and safe rows,
         // convert everything unsafe rows.
         operator.withNewChildren {

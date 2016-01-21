@@ -31,7 +31,7 @@ case class Lineitem(
 class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Query 1") {
-    withSQLConf(("", "")) {
+    withSQLConf(("spark.sql.vectorize.enabled", "true")) {
       val lineitem = sqlContext.read.orc("/Users/yijie/code/lineitem.orc")
       lineitem.registerTempTable("lineitem")
       val q1 =
@@ -49,7 +49,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
         |order by l_returnflag, l_linestatus
       """.stripMargin
       val result = sql(q1)
-      result.explain(true)
+//      result.explain(true)
+      result.show()
     }
   }
 }

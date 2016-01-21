@@ -128,15 +128,19 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
   final def execute(): RDD[InternalRow] = {
     if (children.nonEmpty) {
       val hasUnsafeInputs = children.exists(_.outputsUnsafeRows)
-      val hasSafeInputs = children.exists(!_.outputsUnsafeRows)
-      assert(!(hasSafeInputs && hasUnsafeInputs),
+      val hasSafeInputs = children.count(_.outputsUnsafeRows) +
+        children.count(_.outputRowBatches) != children.size
+      val hasRowBatchInputs = children.exists(_.outputRowBatches)
+      assert(!(hasSafeInputs && hasUnsafeInputs && hasRowBatchInputs),
         "Child operators should output rows in the same format")
-      assert(canProcessSafeRows || canProcessUnsafeRows,
+      assert(canProcessSafeRows || canProcessUnsafeRows || canProcessRowBatches,
         "Operator must be able to process at least one row format")
-      assert(!hasSafeInputs || canProcessSafeRows,
+      assert(if (hasSafeInputs) canProcessSafeRows else true,
         "Operator will receive safe rows as input but cannot process safe rows")
-      assert(!hasUnsafeInputs || canProcessUnsafeRows,
+      assert(if (hasUnsafeInputs) canProcessUnsafeRows else true,
         "Operator will receive unsafe rows as input but cannot process unsafe rows")
+      assert(if (hasRowBatchInputs) canProcessRowBatches else true,
+        "Operator will receive row batches as input but cannot process row batches")
     }
     RDDOperationScope.withScope(sparkContext, nodeName, false, true) {
       prepare()

@@ -30,48 +30,52 @@ case class BatchBoundReference(underlyingExpr: BoundReference) extends LeafBatch
 
   override protected def genCode(
     ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
-    s"${ctx.cvType(dataType)} ${ev.value} = ${ctx.INPUT_ROWBATCH}.columns($ordinal);"
+    s"ColumnVector ${ev.value} = ${ctx.INPUT_ROWBATCH}.columns[$ordinal];"
   }
 }
 
 case class BatchLiteral (underlyingExpr: Literal) extends LeafBatchExpression {
   override def eval(input: RowBatch): ColumnVector = {
-    val cv = dataType match {
-      case IntegerType => IntColumnVector(input.size)
-      case LongType => LongColumnVector(input.size)
-      case DoubleType => DoubleColumnVector(input.size)
-      case StringType => StringColumnVector(input.size)
-      case _ => throw new UnsupportedOperationException("no other type of CV supported yet")
-    }
+    val cv = new ColumnVector(input.capacity, dataType)
     cv.isRepeating = true
-    cv.noNulls = !underlyingExpr.nullable
     if (!cv.noNulls) {
-      cv.isNull(0) = true
+      cv.putNull(0)
     } else {
-      cv.vector(0) = underlyingExpr.value.asInstanceOf[cv.fieldType]
+      cv.put(0, underlyingExpr.value)
     }
     cv
   }
 
   override protected def genCode(
     ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
-    val value = if (!underlyingExpr.nullable) {
+    val value = dataType match {
+      case IntegerType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+      case LongType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+      case DoubleType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+      case StringType => if (underlyingExpr.value == null) {
+          "null"
+        } else {
+          s"""UTF8String.fromString("${underlyingExpr.value}")"""
+        }
+    }
+
+    val v = if (!underlyingExpr.nullable) {
       s"""
-        ${ev.value}.vector[0] =
-          (${ctx.boxedType(dataType)}) ${underlyingExpr.value};
+        ${ev.value}.${ctx.vectorName(dataType)}[0] = $value;
         ${ev.value}.isNull[0] = false;
       """
     } else {
       s"""
-        ${ev.value}.vector[0] = ${ev.value}.null_value();
+        ${ev.value}.${ctx.vectorName(dataType)}[0] =
+          ColumnVector.${ctx.javaType(dataType)}NullValue;
         ${ev.value}.isNull[0] = true;
       """
     }
     s"""
-      ${ctx.cvType(dataType)} ${ev.value} = new ${ctx.cvType(dataType)}(${ctx.INPUT_ROWBATCH.size});
+      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
       ${ev.value}.isRepeating = true;
       ${ev.value}.noNulls = ${!underlyingExpr.nullable};
-      $value
+      $v
     """
   }
 }

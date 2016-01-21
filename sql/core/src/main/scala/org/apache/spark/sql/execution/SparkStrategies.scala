@@ -27,7 +27,7 @@ import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution.columnar.{InMemoryColumnarTableScan, InMemoryRelation}
 import org.apache.spark.sql.execution.datasources.{CreateTableUsing, CreateTempTableUsing, DescribeCommand => LogicalDescribeCommand, _}
 import org.apache.spark.sql.execution.{DescribeCommand => RunnableDescribeCommand}
-import org.apache.spark.sql.{Strategy, execution}
+import org.apache.spark.sql.{SQLContext, Strategy, execution}
 
 private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   self: SparkPlanner =>
@@ -131,7 +131,9 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   /**
    * Used to plan the aggregate operator for expressions based on the AggregateFunction2 interface.
    */
-  object Aggregation extends Strategy {
+  case class Aggregation(sqlContext: SQLContext) extends Strategy {
+    val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled()
+
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.Aggregate(groupingExpressions, resultExpressions, child) =>
         // A single aggregate expression might appear multiple times in resultExpressions.
@@ -214,7 +216,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
               aggregateExpressions,
               aggregateFunctionToAttribute,
               rewrittenResultExpressions,
-              planLater(child))
+              planLater(child), vectorizeEnabled)
           } else {
             aggregate.Utils.planAggregateWithOneDistinct(
               namedGroupingExpressions.map(_._2),

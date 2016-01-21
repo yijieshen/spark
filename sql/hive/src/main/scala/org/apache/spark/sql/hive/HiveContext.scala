@@ -571,7 +571,7 @@ class HiveContext private[hive](
     val hiveContext = self
 
     override def strategies: Seq[Strategy] = experimental.extraStrategies ++ Seq(
-      DataSourceStrategy,
+      DataSourceStrategy(self),
       HiveCommandStrategy(self),
       HiveDDLStrategy,
       DDLStrategy,
@@ -580,7 +580,7 @@ class HiveContext private[hive](
       HiveTableScans,
       DataSinks,
       Scripts,
-      Aggregation,
+      Aggregation(self),
       LeftSemiJoin,
       EquiJoinSelection,
       BasicOperators,

@@ -64,7 +64,8 @@ class ParquetFilterSuite extends QueryTest with ParquetTest with SharedSQLContex
         assert(maybeAnalyzedPredicate.isDefined, "No filter is analyzed from the given query")
 
         val (_, selectedFilters) =
-          DataSourceStrategy.selectFilters(maybeRelation.get, maybeAnalyzedPredicate.toSeq)
+          DataSourceStrategy(sqlContext)
+            .selectFilters(maybeRelation.get, maybeAnalyzedPredicate.toSeq)
         assert(selectedFilters.nonEmpty, "No filter is pushed down")
 
         selectedFilters.foreach { pred =>

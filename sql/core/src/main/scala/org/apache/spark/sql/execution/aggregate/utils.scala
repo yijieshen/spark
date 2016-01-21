@@ -17,9 +17,11 @@
 
 package org.apache.spark.sql.execution.aggregate
 
+import org.apache.commons.lang.NotImplementedException
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
 import org.apache.spark.sql.execution.SparkPlan
+import org.apache.spark.sql.execution.vector.aggregate.HashBasedBatchAggregate
 
 /**
  * Utility functions used by the query planner to convert our plan to new aggregation code path.
@@ -48,6 +50,30 @@ object Utils {
       resultExpressions = resultExpressions,
       child = child
     ) :: Nil
+  }
+
+  private def createVectoriedAggregate(
+    requiredChildDistributionExpressions: Option[Seq[Expression]] = None,
+    groupingExpressions: Seq[NamedExpression] = Nil,
+    aggregateExpressions: Seq[AggregateExpression] = Nil,
+    aggregateAttributes: Seq[Attribute] = Nil,
+    initialInputBufferOffset: Int = 0,
+    resultExpressions: Seq[NamedExpression] = Nil,
+    child: SparkPlan): SparkPlan = {
+    val usesTungstenAggregate = TungstenAggregate.supportsAggregate(
+      aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes))
+    if (usesTungstenAggregate) {
+      HashBasedBatchAggregate(
+        requiredChildDistributionExpressions = requiredChildDistributionExpressions,
+        groupingExpressions = groupingExpressions,
+        aggregateExpressions = aggregateExpressions,
+        aggregateAttributes = aggregateAttributes,
+        initialInputBufferOffset = initialInputBufferOffset,
+        resultExpressions = resultExpressions,
+        child = child)
+    } else {
+      throw new NotImplementedException
+    }
   }
 
   private def createAggregate(
@@ -86,7 +112,8 @@ object Utils {
       aggregateExpressions: Seq[AggregateExpression],
       aggregateFunctionToAttribute: Map[(AggregateFunction, Boolean), Attribute],
       resultExpressions: Seq[NamedExpression],
-      child: SparkPlan): Seq[SparkPlan] = {
+      child: SparkPlan,
+      vectorizeEnabled: Boolean): Seq[SparkPlan] = {
     // Check if we can use TungstenAggregate.
 
     // 1. Create an Aggregate Operator for partial aggregations.
@@ -99,7 +126,8 @@ object Utils {
       groupingAttributes ++
         partialAggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes)
 
-    val partialAggregate = createAggregate(
+    val partialAggregate = if (vectorizeEnabled) {
+      createVectoriedAggregate(
         requiredChildDistributionExpressions = None,
         groupingExpressions = groupingExpressions,
         aggregateExpressions = partialAggregateExpressions,
@@ -107,6 +135,16 @@ object Utils {
         initialInputBufferOffset = 0,
         resultExpressions = partialResultExpressions,
         child = child)
+    } else {
+      createAggregate(
+        requiredChildDistributionExpressions = None,
+        groupingExpressions = groupingExpressions,
+        aggregateExpressions = partialAggregateExpressions,
+        aggregateAttributes = partialAggregateAttributes,
+        initialInputBufferOffset = 0,
+        resultExpressions = partialResultExpressions,
+        child = child)
+    }
 
     // 2. Create an Aggregate Operator for final aggregations.
     val finalAggregateExpressions = aggregateExpressions.map(_.copy(mode = Final))

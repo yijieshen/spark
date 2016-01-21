@@ -29,10 +29,10 @@ class SparkPlanner(val sqlContext: SQLContext) extends SparkStrategies {
 
   def strategies: Seq[Strategy] =
     sqlContext.experimental.extraStrategies ++ (
-      DataSourceStrategy ::
+      DataSourceStrategy(sqlContext) ::
       DDLStrategy ::
       TakeOrderedAndProject ::
-      Aggregation ::
+      Aggregation(sqlContext) ::
       LeftSemiJoin ::
       EquiJoinSelection ::
       InMemoryScans ::

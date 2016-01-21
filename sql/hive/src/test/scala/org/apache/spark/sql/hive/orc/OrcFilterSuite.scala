@@ -49,7 +49,7 @@ class OrcFilterSuite extends QueryTest with OrcTest {
     assert(maybeAnalyzedPredicate.isDefined, "No filter is analyzed from the given query")
 
     val (_, selectedFilters) =
-      DataSourceStrategy.selectFilters(maybeRelation.get, maybeAnalyzedPredicate.toSeq)
+      DataSourceStrategy(sqlContext).selectFilters(maybeRelation.get, maybeAnalyzedPredicate.toSeq)
     assert(selectedFilters.nonEmpty, "No filter is pushed down")
 
     val maybeFilter = OrcFilters.createFilter(selectedFilters.toArray)

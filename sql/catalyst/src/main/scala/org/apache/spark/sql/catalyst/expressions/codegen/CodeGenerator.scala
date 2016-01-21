@@ -143,6 +143,8 @@ class CodeGenContext {
 
   final val INPUT_ROWBATCH = "rb"
 
+  final val BUFFERS = "buffers"
+
   private val curId = new java.util.concurrent.atomic.AtomicInteger()
 
   /**
@@ -224,12 +226,12 @@ class CodeGenContext {
     case _ => "Object"
   }
 
-  def cvType(dt: DataType): String = dt match {
-    case IntegerType => classOf[IntColumnVector].getName
-    case LongType => classOf[LongColumnVector].getName
-    case DoubleType => classOf[DoubleColumnVector].getName
-    case StringType => classOf[StringColumnVector].getName
-    case _ => "UnSupport"
+  def vectorName(dt: DataType): String = dt match {
+    case IntegerType => "intVector"
+    case LongType => "longVector"
+    case DoubleType => "doubleVector"
+    case StringType => "stringVector"
+    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
   /**
@@ -532,7 +534,7 @@ class CodeGenContext {
       //   2. Less code.
       // Currently, we will do this for all non-leaf only expression trees (i.e. expr trees with
       // at least two nodes) as the cost of doing it is expected to be low.
-      addMutableState(cvType(expr.dataType), value, s"$value = null;")
+      addMutableState("ColumnVector", value, s"$value = null;")
       subExprResetVariables += s"$fnName($INPUT_ROWBATCH);"
       val state = SubBExprEliminationState(value)
       e.foreach(subBExprEliminationExprs.put(_, state))
@@ -558,15 +560,6 @@ class CodeGenContext {
  */
 abstract class GeneratedClass {
   def generate(expressions: Array[Expression]): Any
-}
-
-/**
- * A wrapper for generated class related to vectorize,
- * defines a `generate` method so that we can pass extra objects
- * into generated class.
- */
-abstract class RowBatchConverterGeneratedClass {
-  def generate(types: Array[DataType]): Any
 }
 
 /**
@@ -617,13 +610,6 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
   }
 
   /**
-    * Compile the Java source code into a Java class, using Janino.
-    */
-  protected def rowBatchConverterCompile(code: String): RowBatchConverterGeneratedClass = {
-    rowBatchConverterCache.get(code)
-  }
-
-  /**
    * Compile the Java source code into a Java class, using Janino.
    */
   private[this] def doCompile(code: String): GeneratedClass = {
@@ -668,50 +654,6 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
   }
 
   /**
-    * Compile the Java source code into a Java class, using Janino.
-    */
-  private[this] def doRBConverterCompile(code: String): RowBatchConverterGeneratedClass = {
-    val evaluator = new ClassBodyEvaluator()
-    evaluator.setParentClassLoader(Utils.getContextOrSparkClassLoader)
-    // Cannot be under package codegen, or fail with java.lang.InstantiationException
-    evaluator.setClassName("org.apache.spark.sql.catalyst.expressions.GeneratedClass")
-    evaluator.setDefaultImports(Array(
-      classOf[Platform].getName,
-      classOf[InternalRow].getName,
-      classOf[UnsafeRow].getName,
-      classOf[UTF8String].getName,
-      classOf[Decimal].getName,
-      classOf[CalendarInterval].getName,
-      classOf[ArrayData].getName,
-      classOf[UnsafeArrayData].getName,
-      classOf[MapData].getName,
-      classOf[UnsafeMapData].getName,
-      classOf[MutableRow].getName,
-      classOf[RowBatch].getName,
-      classOf[ColumnVector].getName
-    ))
-    evaluator.setExtendedClass(classOf[RowBatchConverterGeneratedClass])
-
-    def formatted = CodeFormatter.format(code)
-
-    logDebug({
-      // Only add extra debugging info to byte code when we are going to print the source code.
-      evaluator.setDebuggingInformation(true, true, false)
-      formatted
-    })
-
-    try {
-      evaluator.cook("generated.java", code)
-    } catch {
-      case e: Exception =>
-        val msg = s"failed to compile: $e\n$formatted"
-        logError(msg, e)
-        throw new Exception(msg, e)
-    }
-    evaluator.getClazz().newInstance().asInstanceOf[RowBatchConverterGeneratedClass]
-  }
-
-  /**
    * A cache of generated classes.
    *
    * From the Guava Docs: A Cache is similar to ConcurrentMap, but not quite the same. The most
@@ -727,20 +669,6 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
         override def load(code: String): GeneratedClass = {
           val startTime = System.nanoTime()
           val result = doCompile(code)
-          val endTime = System.nanoTime()
-          def timeMs: Double = (endTime - startTime).toDouble / 1000000
-          logInfo(s"Code generated in $timeMs ms")
-          result
-        }
-      })
-
-  private val rowBatchConverterCache = CacheBuilder.newBuilder()
-    .maximumSize(100)
-    .build(
-      new CacheLoader[String, RowBatchConverterGeneratedClass]() {
-        override def load(code: String): RowBatchConverterGeneratedClass = {
-          val startTime = System.nanoTime()
-          val result = doRBConverterCompile(code)
           val endTime = System.nanoTime()
           def timeMs: Double = (endTime - startTime).toDouble / 1000000
           logInfo(s"Code generated in $timeMs ms")

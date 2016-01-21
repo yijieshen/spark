@@ -43,6 +43,12 @@ package object vector {
       case o @ Or(l, r) => BatchOr(exprToBatch(l), exprToBatch(r), o)
       case n @ Not(l) => BatchNot(exprToBatch(l), n)
 
+      case i @ If(p, t, f) => BatchIf(exprToBatch(p), exprToBatch(t), exprToBatch(f), i)
+      case c @ Coalesce(children) => BatchCoalesce(children.map(exprToBatch), c)
+      case c @ Cast(child, _) => BatchCast(exprToBatch(child), c)
+      case in @ IsNull(c) => BatchIsNull(exprToBatch(c), in)
+      case inn @ IsNotNull(c) => BatchIsNotNull(exprToBatch(c), inn)
+
       case _ =>
         throw new UnsupportedOperationException(s"unable to convert $expr to its batch version")
     }

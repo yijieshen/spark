@@ -19,6 +19,7 @@ package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.expressions.codegen.{GeneratedBatchExpressionCode, CodeGenContext}
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
 
 abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
@@ -39,10 +40,10 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-      ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.vector;
-      ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.vector;
-      ${ctx.cvType(dataType)} ${ev.value} = new ${ctx.cvType(dataType)}($batchSize);
-      ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.vector;
+      ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
+      ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.${ctx.vectorName(right.dataType)};
+      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+      ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
       ${ev.value}.isRepeating =
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
@@ -104,7 +105,7 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $batchSize);
 
     """
@@ -165,10 +166,10 @@ case class BatchDivide(
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-      ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.vector;
-      ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.vector;
-      ${ctx.cvType(dataType)} ${ev.value} = new ${ctx.cvType(dataType)}($batchSize);
-      ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.vector;
+      ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
+      ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.${ctx.vectorName(right.dataType)};
+      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+      ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
       ${ev.value}.isRepeating =
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
@@ -177,7 +178,7 @@ case class BatchDivide(
       $nu.propagateNullsForBinaryExpression(
         ${eval1.value}, ${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
-      $nu.propagateZeroDenomAsNulls(${eval2.value}, ${ev.value},
+      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}(${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse)
 
       /*
@@ -233,7 +234,7 @@ case class BatchDivide(
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $batchSize);
 
     """

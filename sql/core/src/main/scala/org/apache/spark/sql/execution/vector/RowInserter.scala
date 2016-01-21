@@ -18,52 +18,51 @@
 package org.apache.spark.sql.execution.vector
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{MutableRow, Attribute}
+import org.apache.spark.sql.catalyst.expressions.{Expression, MutableRow, Attribute}
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeFormatter, CodeGenerator}
-import org.apache.spark.sql.catalyst.vector.{ColumnVector, ColumnVectorUpdater}
+import org.apache.spark.sql.catalyst.vector.ColumnVector
 import org.apache.spark.sql.types._
 
 abstract class RowInserter {
-  def insert(row: InternalRow, updaters: Seq[ColumnVectorUpdater]): Unit
+  def insert(row: InternalRow, vectors: Array[ColumnVector], rowId: Int): Unit
 }
 
 abstract class RowGetter {
-  def get(row: MutableRow, vectors: Seq[ColumnVector], rowIdx: Int): Unit
+  def get(row: MutableRow, vectors: Array[ColumnVector], rowIdx: Int): Unit
 }
 
-object GenerateRowGetter extends CodeGenerator[Seq[DataType], RowGetter] {
-  override protected def canonicalize(in: Seq[DataType]): Seq[DataType] = in
-  override protected def bind(in: Seq[DataType], inputSchema: Seq[Attribute]): Seq[DataType] = in
+object GenerateRowGetter extends CodeGenerator[Seq[Expression], RowGetter] {
+  override protected def canonicalize(in: Seq[Expression]): Seq[Expression] = in
+  override protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
+    in
 
-  val dataType = classOf[DataType].getName
-
-  override protected def create(in: Seq[DataType]): RowGetter = {
+  override protected def create(in: Seq[Expression]): RowGetter = {
     val ctx = newCodeGenContext()
 
     def nullSafeGetter(dt: DataType, idx: Int): String = {
       dt match {
-        case IntegerType => s"row.setInt($idx, vectors[$idx].vector[rowIdx])"
-        case LongType => s"row.setLong($idx, vectors[$idx].vector[rowIdx])"
-        case DoubleType => s"row.setDouble($idx, vectors[$idx].vector[rowIdx])"
-        case StringType => s"row.update($idx, vectors[$idx].vector[rowIdx])"
+        case IntegerType => s"row.setInt($idx, vectors[$idx].intVector[rowIdx])"
+        case LongType => s"row.setLong($idx, vectors[$idx].longVector[rowIdx])"
+        case DoubleType => s"row.setDouble($idx, vectors[$idx].doubleVector[rowIdx])"
+        case StringType => s"row.update($idx, vectors[$idx].stringVector[rowIdx])"
         case _ => s"NOT SUPPORTED TYPE"
       }
     }
 
-    val getter = in.zipWithIndex.map { case (dt, idx) =>
-      val nullSafe = nullSafeGetter(dt, idx)
+    val getter = in.zipWithIndex.map { case (expr, idx) =>
+      val nullSafe = nullSafeGetter(expr.dataType, idx)
       s"""
         if (vectors[$idx].isNull[rowIdx]) {
-          row.setNullAt($idx)
+          row.setNullAt($idx);
         } else {
-          $nullSafe
+          $nullSafe;
         }
        """
       }.mkString("\n")
 
     val code =
       s"""
-        public java.lang.Object generate($dataType[] types) {
+        public java.lang.Object generate($exprType[] exprs) {
           return new SpecificRowGetter();
         }
 
@@ -77,51 +76,48 @@ object GenerateRowGetter extends CodeGenerator[Seq[DataType], RowGetter] {
 
     logDebug(s"code for ${in.mkString(",")}:\n${CodeFormatter.format(code)}")
 
-    val c = rowBatchConverterCompile(code)
-    c.generate(in.toArray).asInstanceOf[RowGetter]
+    val c = compile(code)
+    c.generate(ctx.references.toArray).asInstanceOf[RowGetter]
   }
 }
 
-object GenerateRowInserter extends CodeGenerator[Seq[DataType], RowInserter] {
-  override protected def canonicalize(in: Seq[DataType]): Seq[DataType] = in
-  override protected def bind(in: Seq[DataType], inputSchema: Seq[Attribute]): Seq[DataType] = in
-
-  val dataType = classOf[DataType].getName
-  val cvUpdaterType = classOf[ColumnVectorUpdater].getName
-
-  override protected def create(in: Seq[DataType]): RowInserter = {
+object GenerateRowInserter extends CodeGenerator[Seq[Expression], RowInserter] {
+  override protected def canonicalize(in: Seq[Expression]): Seq[Expression] = in
+  override protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
+    in
+  override protected def create(in: Seq[Expression]): RowInserter = {
     val ctx = newCodeGenContext()
 
     def nullSafeGetAndPut(dt: DataType, idx: Int): String = {
       dt match {
-        case IntegerType => s"updaters[$idx].putInt(row.getInt($idx))"
-        case LongType => s"updaters[$idx].putLong(row.getLong($idx))"
-        case DoubleType => s"updaters[$idx].putDouble(row.getDouble($idx))"
-        case StringType => s"updaters[$idx].putString(row.getUTF8String($idx))"
+        case IntegerType => s"vectors[$idx].putInt(rowId, row.getInt($idx))"
+        case LongType => s"vectors[$idx].putLong(rowId, row.getLong($idx))"
+        case DoubleType => s"vectors[$idx].putDouble(rowId, row.getDouble($idx))"
+        case StringType => s"vectors[$idx].putString(rowId, row.getUTF8String($idx))"
         case _ => s"NOT SUPPORTED TYPE"
       }
     }
 
-    val getAndPut = in.zipWithIndex.map { case (dt, idx) =>
-      val nullSafe = nullSafeGetAndPut(dt, idx)
+    val getAndPut = in.zipWithIndex.map { case (expr, idx) =>
+      val nullSafe = nullSafeGetAndPut(expr.dataType, idx)
       s"""
         if (row.isNullAt($idx)) {
-          updaters[$idx].putNull()
+          vectors[$idx].putNull(rowId);
         } else {
-          $nullSafe
+          $nullSafe;
         }
        """
     }.mkString("\n")
 
     val code =
       s"""
-        public java.lang.Object generate($dataType[] types) {
+        public java.lang.Object generate($exprType[] exprs) {
           return new SpecificRowInserter();
         }
 
         class SpecificRowInserter extends ${classOf[RowInserter].getName} {
           @Override
-          public void insert(InternalRow row, $cvUpdaterType[] updaters) {
+          public void insert(InternalRow row, ColumnVector[] vectors, int rowId) {
             $getAndPut
           }
         }
@@ -129,7 +125,7 @@ object GenerateRowInserter extends CodeGenerator[Seq[DataType], RowInserter] {
 
     logDebug(s"code for ${in.mkString(",")}:\n${CodeFormatter.format(code)}")
 
-    val c = rowBatchConverterCompile(code)
-    c.generate(in.toArray).asInstanceOf[RowInserter]
+    val c = compile(code)
+    c.generate(ctx.references.toArray).asInstanceOf[RowInserter]
   }
 }
