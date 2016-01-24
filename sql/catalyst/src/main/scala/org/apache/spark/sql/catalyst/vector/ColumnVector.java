@@ -61,6 +61,12 @@ public class ColumnVector implements Serializable {
   public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
   public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
 
+  public ColumnVector(int capacity) {
+    isNull = new boolean[capacity];
+    noNulls = true;
+    isRepeating = false;
+  }
+
   /**
    * Constructor for super-class ColumnVector. This is not called directly,
    * but used to initialize inherited fields.
@@ -68,9 +74,7 @@ public class ColumnVector implements Serializable {
    * @param capacity Vector length
    */
   public ColumnVector(int capacity, DataType dt) {
-    isNull = new boolean[capacity];
-    noNulls = true;
-    isRepeating = false;
+    this(capacity);
     dataType = dt;
     if (dt instanceof IntegerType) {
       intVector = new int[capacity];
@@ -86,8 +90,32 @@ public class ColumnVector implements Serializable {
     }
   }
 
-  public ColumnVector(int capacity, String dataType) {
-    this(capacity, DataType$.MODULE$.fromString(dataType));
+  public static ColumnVector genIntegerColumnVector(int capacity) {
+    ColumnVector cv = new ColumnVector(capacity);
+    cv.dataType = IntegerType$.MODULE$;
+    cv.intVector = new int[capacity];
+    return cv;
+  }
+
+  public static ColumnVector genLongColumnVector(int capacity) {
+    ColumnVector cv = new ColumnVector(capacity);
+    cv.dataType = LongType$.MODULE$;
+    cv.longVector = new long[capacity];
+    return cv;
+  }
+
+  public static ColumnVector genDoubleColumnVector(int capacity) {
+    ColumnVector cv = new ColumnVector(capacity);
+    cv.dataType = DoubleType$.MODULE$;
+    cv.doubleVector = new double[capacity];
+    return cv;
+  }
+
+  public static ColumnVector genStringColumnVector(int capacity) {
+    ColumnVector cv = new ColumnVector(capacity);
+    cv.dataType = StringType$.MODULE$;
+    cv.stringVector = new UTF8String[capacity];
+    return cv;
   }
 
   /**

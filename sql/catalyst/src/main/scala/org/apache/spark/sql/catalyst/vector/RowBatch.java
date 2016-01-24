@@ -100,6 +100,11 @@ public class RowBatch implements Serializable {
         row.rowId = rowId++;
         return row;
       }
+
+      @Override
+      public void remove() {
+        throw new UnsupportedOperationException("remove");
+      }
     };
   }
 

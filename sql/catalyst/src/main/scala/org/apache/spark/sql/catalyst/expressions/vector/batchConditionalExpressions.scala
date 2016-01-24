@@ -113,7 +113,7 @@ case class BatchIf(
       } else {
         ${trueEval.code}
         ${falseEval.code}
-        ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+        ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
         ${ctx.javaType(trueValue.dataType)}[] $trueV =
           ${trueEval.value}.${ctx.vectorName(trueValue.dataType)};
         ${ctx.javaType(falseValue.dataType)}[] $falseV =

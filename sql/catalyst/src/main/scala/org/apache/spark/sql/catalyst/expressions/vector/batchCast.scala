@@ -39,7 +39,7 @@ case class BatchCast(
 
     def cvCopy(castSingle: String): String = {
       val cal = s"""
-        ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+        ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
         ${ev.value}.noNulls = ${eval.value}.noNulls;
         System.arraycopy(${eval.value}.isNull, 0,
           ${ev.value}.isNull, 0, ${ctx.INPUT_ROWBATCH}.capacity);

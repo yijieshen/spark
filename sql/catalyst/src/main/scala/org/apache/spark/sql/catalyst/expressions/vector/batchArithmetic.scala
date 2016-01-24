@@ -42,7 +42,7 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
 
       ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
       ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.${ctx.vectorName(right.dataType)};
-      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
       ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
       ${ev.value}.isRepeating =
@@ -168,7 +168,7 @@ case class BatchDivide(
 
       ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
       ${ctx.javaType(right.dataType)}[] $rightV = ${eval2.value}.${ctx.vectorName(right.dataType)};
-      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
       ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
       ${ev.value}.isRepeating =

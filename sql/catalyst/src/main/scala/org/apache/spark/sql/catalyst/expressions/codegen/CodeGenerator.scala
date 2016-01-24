@@ -234,6 +234,14 @@ class CodeGenContext {
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
+  def newVector(capacity: String, dt: DataType): String = dt match {
+    case IntegerType => s"ColumnVector.genIntegerColumnVector($capacity)"
+    case LongType => s"ColumnVector.genLongColumnVector($capacity)"
+    case DoubleType => s"ColumnVector.genDoubleColumnVector($capacity)"
+    case StringType => s"ColumnVector.genStringColumnVector($capacity)"
+    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
+  }
+
   /**
    * Returns the boxed type in Java.
    */

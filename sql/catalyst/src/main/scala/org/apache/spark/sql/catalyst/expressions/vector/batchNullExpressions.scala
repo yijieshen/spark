@@ -60,7 +60,7 @@ case class BatchCoalesce(
       if (${firstEval.value}.noNulls) {
         ${ev.value} = ${firstEval.value};
       } else {
-        ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+        ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
         ${ev.value}.noNulls = false;
         $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 

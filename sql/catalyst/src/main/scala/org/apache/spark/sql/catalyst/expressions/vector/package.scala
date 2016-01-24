@@ -23,6 +23,7 @@ package object vector {
     expr match {
       case l: Literal => BatchLiteral(l)
       case b: BoundReference => BatchBoundReference(b)
+      case a: Alias => exprToBatch(a.child)
 
       case a @ Add(l, r) => BatchAdd(exprToBatch(l), exprToBatch(r), a)
       case s @ Subtract(l, r) => BatchSubtract(exprToBatch(l), exprToBatch(r), s)

@@ -72,7 +72,7 @@ case class BatchLiteral (underlyingExpr: Literal) extends LeafBatchExpression {
       """
     }
     s"""
-      ColumnVector ${ev.value} = new ColumnVector(${ctx.INPUT_ROWBATCH}.capacity, "$dataType");
+      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
       ${ev.value}.isRepeating = true;
       ${ev.value}.noNulls = ${!underlyingExpr.nullable};
       $v
