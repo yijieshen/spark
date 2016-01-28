@@ -22,7 +22,6 @@ import org.apache.spark.sql.catalyst.expressions.codegen.{GeneratedBatchExpressi
 import org.apache.spark.sql.catalyst.vector.{ColumnVector, RowBatch}
 import org.apache.spark.sql.types.DataType
 
-
 case class BatchIf(
     predicate: BatchExpression,
     trueValue: BatchExpression,

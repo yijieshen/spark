@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.execution.vector
 
+import scala.collection.JavaConverters._
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
@@ -39,7 +41,10 @@ private[sql] case class PhysicalBatchRDD(
   override def canProcessUnsafeRows: Boolean = false
 
   protected override def doExecute(): RDD[InternalRow] =
-    throw new UnsupportedOperationException(getClass.getName)
+//    throw new UnsupportedOperationException(getClass.getName)
+    doBatchExecute().mapPartitions { iter =>
+      iter.map(_.rowIterator().asScala).flatten
+    }
 
   protected override def doBatchExecute(): RDD[RowBatch] = rdd
 

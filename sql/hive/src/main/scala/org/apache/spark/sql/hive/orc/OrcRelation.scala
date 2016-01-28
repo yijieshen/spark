@@ -19,11 +19,12 @@ package org.apache.spark.sql.hive.orc
 
 import java.util.Properties
 
+import scala.collection.JavaConverters._
+
 import com.google.common.base.Objects
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, Path}
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
-import org.apache.hadoop.hive.ql.exec.vector.{ColumnVector => HiveColumnVector, LongColumnVector => HLongColumnVector, DoubleColumnVector => HDoubleColumnVector, BytesColumnVector, VectorizedRowBatch}
 import org.apache.hadoop.hive.ql.io.orc._
 import org.apache.hadoop.hive.serde2.objectinspector.SettableStructObjectInspector
 import org.apache.hadoop.hive.serde2.typeinfo.{StructTypeInfo, TypeInfoUtils}
@@ -45,7 +46,6 @@ import org.apache.spark.sql.hive.{HiveContext, HiveInspectors, HiveMetastoreType
 import org.apache.spark.sql.sources.{Filter, _}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, SQLContext}
-import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.SerializableConfiguration
 
 private[sql] class DefaultSource extends HadoopFsRelationProvider with DataSourceRegister {
@@ -364,56 +364,30 @@ private[orc] case class OrcTableBatchScan(
 
   // Transform all given raw `Writable`s into `RowBatch`s.
   private def fillObject(
-    path: String,
-    conf: Configuration,
-    iterator: Iterator[Writable],
+    iterator: Iterator[RowBatch],
     nonPartitionKeyAttrs: Seq[Attribute]): Iterator[RowBatch] = {
-    val deserializer = new OrcSerde
-    val maybeStructOI = OrcFileOperator.getObjectInspector(path, Some(conf))
 
-    // SPARK-8501: ORC writes an empty schema ("struct<>") to an ORC file if the file contains zero
-    // rows, and thus couldn't give a proper ObjectInspector.  In this case we just return an empty
-    // partition since we know that this file is empty.
-    maybeStructOI.map { soi =>
-      val (fieldRefs, fieldOrdinals) = nonPartitionKeyAttrs.zipWithIndex.map {
-        case (attr, ordinal) =>
-          soi.getStructFieldRef(attr.name) -> ordinal
-      }.unzip
-      val cvUnwrappers = fieldRefs.map(unwrapperForCV)
+    new Iterator[RowBatch] {
+      val rb = new RowBatch(nonPartitionKeyAttrs.size)
+      rb.fieldTypes = nonPartitionKeyAttrs.map(_.dataType).toArray
+      rb.colNames = nonPartitionKeyAttrs.map(_.name).asJava
 
-      val rb = RowBatch.create(attributes.map(_.dataType).toArray)
-      val rbCapacity = rb.capacity
-
-      new Iterator[RowBatch] {
-        override def hasNext: Boolean = iterator.hasNext
-
-        override def next(): RowBatch = {
-          rb.reset()
-          var rowId: Int = 0
-          while (iterator.hasNext && rowId < rbCapacity) {
-            val raw = deserializer.deserialize(iterator.next())
-            var i = 0
-            while (i < fieldRefs.length) {
-              val fieldValue = soi.getStructFieldData(raw, fieldRefs(i))
-              val cv = rb.columns(i)
-              if (fieldValue == null) {
-                cv.putNull(rowId)
-              } else {
-                cvUnwrappers(i)(fieldValue, cv, rowId)
-              }
-              i += 1
-            }
-            rowId += 1
-          }
-          rb.size = rowId
-          if (rowId < rbCapacity) {
-            rb.endOfFile = true
-          }
-          rb
+      override def hasNext: Boolean = iterator.hasNext
+      override def next(): RowBatch = {
+        val prev = iterator.next()
+        rb.size = prev.size;
+        rb.selected = prev.selected;
+        rb.selectedInUse = prev.selectedInUse;
+        rb.endOfFile = prev.endOfFile;
+        var i = 0
+        while (i < rb.numCols) {
+          val name = rb.colNames.get(i)
+          val indexInOrigin = prev.colNames.indexOf(name)
+          rb.columns(i) = prev.columns(indexInOrigin)
+          i += 1
         }
+        rb
       }
-    }.getOrElse {
-      Iterator.empty
     }
   }
 
@@ -439,21 +413,21 @@ private[orc] case class OrcTableBatchScan(
     FileInputFormat.setInputPaths(job, inputPaths.map(_.getPath): _*)
 
     val inputFormatClass =
-      classOf[OrcInputFormat]
-        .asInstanceOf[Class[_ <: MapRedInputFormat[NullWritable, Writable]]]
+      classOf[VectorizedOrcInputFormat]
+        .asInstanceOf[Class[_ <: MapRedInputFormat[Void, RowBatch]]]
 
     val rdd = sqlContext.sparkContext.hadoopRDD(
       conf.asInstanceOf[JobConf],
       inputFormatClass,
-      classOf[NullWritable],
-      classOf[Writable]
-    ).asInstanceOf[HadoopRDD[NullWritable, Writable]]
+      classOf[Void],
+      classOf[RowBatch]
+    ).asInstanceOf[HadoopRDD[Void, RowBatch]]
 
-    val wrappedConf = new SerializableConfiguration(conf)
+    // val wrappedConf = new SerializableConfiguration(conf)
 
-    rdd.mapPartitionsWithInputSplit { case (split: OrcSplit, iterator) =>
-      val writableIterator = iterator.map(_._2)
-      fillObject(split.getPath.toString, wrappedConf.value, writableIterator, attributes)
+    rdd.mapPartitionsWithInputSplit { case (split, iterator) =>
+      val originIter = iterator.map(_._2)
+      fillObject(originIter, attributes)
     }
   }
 }

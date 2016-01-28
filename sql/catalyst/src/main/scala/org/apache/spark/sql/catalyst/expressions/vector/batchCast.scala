@@ -44,8 +44,9 @@ case class BatchCast(
         System.arraycopy(${eval.value}.isNull, 0,
           ${ev.value}.isNull, 0, ${ctx.INPUT_ROWBATCH}.capacity);
         ${ev.value}.isRepeating = ${eval.value}.isRepeating;
-        ${ctx.javaType(dataType)}[] $resultV = ${ev.value}.${ctx.vectorName(dataType)};
-        ${ctx.javaType(child.dataType)}[] $fromV = ${eval.value}.${ctx.vectorName(child.dataType)};
+        ${ctx.vectorArrayType(dataType)} $resultV = ${ev.value}.${ctx.vectorName(dataType)};
+        ${ctx.vectorArrayType(child.dataType)} $fromV =
+          ${eval.value}.${ctx.vectorName(child.dataType)};
         if (${ev.value}.isRepeating && ${ev.value}.noNulls) {
           int i = 0;
           $castSingle
@@ -98,7 +99,7 @@ case class BatchCast(
       case StringType =>
         s"""
           try {
-            $resultV[i] = Integer.valueOf($fromV[i].toString());
+            $resultV[i] = Integer.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
             ${ev.value}.isNull[i] = true;
           }
@@ -110,7 +111,7 @@ case class BatchCast(
       case StringType =>
         s"""
           try {
-            $resultV[i] = Long.valueOf($fromV[i].toString());
+            $resultV[i] = Long.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
             ${ev.value}.isNull[i] = true;
           }
@@ -122,7 +123,7 @@ case class BatchCast(
       case StringType =>
         s"""
           try {
-            $resultV[i] = Double.valueOf($fromV[i].toString());
+            $resultV[i] = Double.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
             ${ev.value}.isNull[i] = true;
           }
@@ -131,7 +132,7 @@ case class BatchCast(
     }
 
     val castToStringCode = child.dataType match {
-      case _ => s"$resultV[i] = UTF8String.fromString(String.valueOf($fromV[i]));"
+      case _ => s"${ev.value}.putString(i, String.valueOf($fromV[i]));"
     }
 
     val castCode = dataType match {

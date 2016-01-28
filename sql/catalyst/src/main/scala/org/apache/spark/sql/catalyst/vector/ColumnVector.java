@@ -44,7 +44,13 @@ public class ColumnVector implements Serializable {
   public int[] intVector;
   public long[] longVector;
   public double[] doubleVector;
-  public UTF8String[] stringVector;
+
+  public byte[][] bytesVector;
+  public int[] starts;
+  public int[] lengths;
+
+  public UTF8String str = new UTF8String();
+
   public Object[] objectVector;
 
   public DataType dataType;
@@ -61,7 +67,7 @@ public class ColumnVector implements Serializable {
   public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
   public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
 
-  public ColumnVector(int capacity) {
+  private ColumnVector(int capacity) {
     isNull = new boolean[capacity];
     noNulls = true;
     isRepeating = false;
@@ -83,7 +89,9 @@ public class ColumnVector implements Serializable {
     } else if (dt instanceof DoubleType) {
       doubleVector = new double[capacity];
     } else if (dt instanceof StringType) {
-      stringVector = new UTF8String[capacity];
+      bytesVector = new byte[capacity][];
+      starts = new int[capacity];
+      lengths = new int[capacity];
     } else {
       throw new UnsupportedOperationException(dt + "is Not supported yet");
       // objectVector = new Object[capacity];
@@ -114,8 +122,23 @@ public class ColumnVector implements Serializable {
   public static ColumnVector genStringColumnVector(int capacity) {
     ColumnVector cv = new ColumnVector(capacity);
     cv.dataType = StringType$.MODULE$;
-    cv.stringVector = new UTF8String[capacity];
+    cv.bytesVector = new byte[capacity][];
+    cv.starts = new int[capacity];
+    cv.lengths = new int[capacity];
     return cv;
+  }
+
+  /** Set a field by reference.
+   *
+   * @param elementNum index within column vector to set
+   * @param sourceBuf container of source data
+   * @param start start byte position within source
+   * @param length  length of source byte sequence
+   */
+  public void setRef(int elementNum, byte[] sourceBuf, int start, int length) {
+    this.bytesVector[elementNum] = sourceBuf;
+    this.starts[elementNum] = start;
+    this.lengths[elementNum] = length;
   }
 
   /**
@@ -150,7 +173,20 @@ public class ColumnVector implements Serializable {
   }
 
   public void putString(int rowId, UTF8String value) {
-    stringVector[rowId] = value;
+    bytesVector[rowId] = value.getBytes();
+    starts[rowId] = 0;
+    lengths[rowId] = value.numBytes();
+  }
+
+  public void putString(int rowId, String value) {
+    byte[] bytes = value.getBytes();
+    bytesVector[rowId] = bytes;
+    starts[rowId] = 0;
+    lengths[rowId] = bytes.length;
+  }
+
+  public UTF8String getString(int rowId) {
+    return str.update(bytesVector[rowId], starts[rowId], lengths[rowId]);
   }
 
   public void put(int rowId, Object value) {

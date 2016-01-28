@@ -47,30 +47,45 @@ case class BatchLiteral (underlyingExpr: Literal) extends LeafBatchExpression {
   }
 
   override protected def genCode(
-    ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
-    val value = dataType match {
-      case IntegerType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
-      case LongType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
-      case DoubleType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
-      case StringType => if (underlyingExpr.value == null) {
-          "null"
+      ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val v = dataType match {
+      case StringType =>
+        if (!underlyingExpr.nullable) {
+          s"""
+            byte[] bytes = "${underlyingExpr.value}".getBytes();
+            ${ev.value}.bytesVector[0] = bytes;
+            ${ev.value}.starts[0] = 0;
+            ${ev.value}.lengths[0] = bytes.length;
+            ${ev.value}.isNull[0] = false;
+          """
         } else {
-          s"""UTF8String.fromString("${underlyingExpr.value}")"""
+          s"""
+            ${ev.value}.bytesVector[0] = new byte[0];
+            ${ev.value}.starts[0] = 0;
+            ${ev.value}.lengths[0] = 0;
+            ${ev.value}.isNull[0] = true;
+          """
+        }
+      case a =>
+        val value = a match {
+          case IntegerType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+          case LongType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+          case DoubleType => if (underlyingExpr.value == null) "0" else s"${underlyingExpr.value}"
+        }
+        if (!underlyingExpr.nullable) {
+          s"""
+            ${ev.value}.${ctx.vectorName(dataType)}[0] = $value;
+            ${ev.value}.isNull[0] = false;
+          """
+        } else {
+          s"""
+            ${ev.value}.${ctx.vectorName(dataType)}[0] =
+              ColumnVector.${ctx.javaType(dataType)}NullValue;
+            ${ev.value}.isNull[0] = true;
+          """
         }
     }
 
-    val v = if (!underlyingExpr.nullable) {
-      s"""
-        ${ev.value}.${ctx.vectorName(dataType)}[0] = $value;
-        ${ev.value}.isNull[0] = false;
-      """
-    } else {
-      s"""
-        ${ev.value}.${ctx.vectorName(dataType)}[0] =
-          ColumnVector.${ctx.javaType(dataType)}NullValue;
-        ${ev.value}.isNull[0] = true;
-      """
-    }
     s"""
       ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
       ${ev.value}.isRepeating = true;

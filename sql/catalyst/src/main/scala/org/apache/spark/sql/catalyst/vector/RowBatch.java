@@ -20,9 +20,11 @@ package org.apache.spark.sql.catalyst.vector;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.spark.sql.catalyst.InternalRow;
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.MapData;
 import org.apache.spark.sql.types.DataType;
@@ -37,6 +39,11 @@ public class RowBatch implements Serializable {
   public int[] selected; // array of selected rows
   public boolean selectedInUse; // if selected is valid
   public ColumnVector[] columns;
+
+  public DataType[] fieldTypes;
+  public List<String> colNames;
+
+  public UTF8String str = new UTF8String();
 
   public boolean endOfFile;
 
@@ -110,6 +117,7 @@ public class RowBatch implements Serializable {
 
   public static RowBatch create(DataType[] dts, int capacity) {
     RowBatch rb = new RowBatch(dts.length, capacity);
+    rb.fieldTypes = dts;
     for (int i = 0; i < dts.length; i ++) {
       rb.columns[i] = new ColumnVector(capacity, dts[i]);
     }
@@ -118,6 +126,12 @@ public class RowBatch implements Serializable {
 
   public static RowBatch create(DataType[] dts) {
     return create(dts, DEFAULT_SIZE);
+  }
+
+  public static RowBatch create(DataType[] dts, List<String> colNames) {
+    RowBatch rb = create(dts, DEFAULT_SIZE);
+    rb.colNames = colNames;
+    return rb;
   }
 
   public final class Row extends InternalRow {
@@ -130,6 +144,9 @@ public class RowBatch implements Serializable {
 
     @Override
     public InternalRow copy() {
+//      Object[] o = {getUTF8String(0).clone(),  getUTF8String(1).clone(), getDouble(2)};
+//      InternalRow row = new GenericInternalRow(o);
+//      return row;
       throw new UnsupportedOperationException();
     }
 
@@ -190,7 +207,9 @@ public class RowBatch implements Serializable {
 
     @Override
     public UTF8String getUTF8String(int ordinal) {
-      return columns[ordinal].stringVector[rowId];
+      ColumnVector cv = columns[ordinal];
+      str.update(cv.bytesVector[rowId], cv.starts[rowId], cv.lengths[rowId]);
+      return str;
     }
 
     @Override

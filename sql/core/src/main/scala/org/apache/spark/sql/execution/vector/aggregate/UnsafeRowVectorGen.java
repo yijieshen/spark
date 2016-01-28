@@ -217,10 +217,12 @@ public class UnsafeRowVectorGen {
   public void writeColumnUTF8String(int ordinal, ColumnVector stringcv) {
     if (rowBatch.selectedInUse) {
       if (stringcv.isRepeating && stringcv.noNulls) {
-        final UTF8String value = stringcv.stringVector[0];
+        final byte[] value = stringcv.bytesVector[0];
+        final int start = stringcv.starts[0];
+        final int length = stringcv.lengths[0];
         for (int j = 0; j < rowBatch.size; j ++) {
           int i = rowBatch.selected[j];
-          writers[i].write(ordinal, value);
+          writers[i].write(ordinal, value, start, length);
         }
       } else if (stringcv.isRepeating) {
         for (int j = 0; j < rowBatch.size; j ++) {
@@ -230,7 +232,8 @@ public class UnsafeRowVectorGen {
       } else if (stringcv.noNulls) {
         for (int j = 0; j < rowBatch.size; j ++) {
           int i = rowBatch.selected[j];
-          writers[i].write(ordinal, stringcv.stringVector[i]);
+          writers[i].write(ordinal,
+            stringcv.bytesVector[i], stringcv.starts[i], stringcv.lengths[i]);
         }
       } else { // !isRepeating && hasNull
         for (int j = 0; j < rowBatch.size; j ++) {
@@ -238,15 +241,18 @@ public class UnsafeRowVectorGen {
           if (stringcv.isNull[i]) {
             writers[i].setNullAt(ordinal);
           } else {
-            writers[i].write(ordinal, stringcv.stringVector[i]);
+            writers[i].write(ordinal,
+              stringcv.bytesVector[i], stringcv.starts[i], stringcv.lengths[i]);
           }
         }
       }
     } else {
       if (stringcv.isRepeating && stringcv.noNulls) {
-        final UTF8String value = stringcv.stringVector[0];
+        final byte[] value = stringcv.bytesVector[0];
+        final int start = stringcv.starts[0];
+        final int length = stringcv.lengths[0];
         for (int i = 0; i < rowBatch.size; i ++) {
-          writers[i].write(ordinal, value);
+          writers[i].write(ordinal, value, start, length);
         }
       } else if (stringcv.isRepeating) {
         for (int i = 0; i < rowBatch.size; i ++) {
@@ -254,14 +260,16 @@ public class UnsafeRowVectorGen {
         }
       } else if (stringcv.noNulls) {
         for (int i = 0; i < rowBatch.size; i ++) {
-          writers[i].write(ordinal, stringcv.stringVector[i]);
+          writers[i].write(ordinal,
+            stringcv.bytesVector[i], stringcv.starts[i], stringcv.lengths[i]);
         }
       } else { // !isRepeating && hasNull
         for (int i = 0; i < rowBatch.size; i ++) {
           if (stringcv.isNull[i]) {
             writers[i].setNullAt(ordinal);
           } else {
-            writers[i].write(ordinal, stringcv.stringVector[i]);
+            writers[i].write(ordinal,
+              stringcv.bytesVector[i], stringcv.starts[i], stringcv.lengths[i]);
           }
         }
       }

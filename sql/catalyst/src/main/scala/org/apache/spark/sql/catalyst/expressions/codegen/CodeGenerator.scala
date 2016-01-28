@@ -230,7 +230,15 @@ class CodeGenContext {
     case IntegerType => "intVector"
     case LongType => "longVector"
     case DoubleType => "doubleVector"
-    case StringType => "stringVector"
+    case StringType => "bytesVector"
+    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
+  }
+
+  def vectorArrayType(dt: DataType): String = dt match {
+    case IntegerType => "int[]"
+    case LongType => "long[]"
+    case DoubleType => "double[]"
+    case StringType => "byte[][]"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
