@@ -32,7 +32,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Query 1") {
     withSQLConf(("spark.sql.vectorize.enabled", "true")) {
-      val lineitem = sqlContext.read.orc("/Users/yijie/code/si.orc/")
+      val lineitem = sqlContext.read.orc("/Users/yijie/code/si.orc")
       lineitem.registerTempTable("lineitem")
       val q1 =
       """
@@ -49,19 +49,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
         |order by l_returnflag, l_linestatus
       """.stripMargin
 
-      val q2 =
-        """
-          |select
-          |  l_returnflag, l_linestatus, sum(l_extendedprice), count(1)
-          |from
-          |  lineitem
-          |where
-          |  l_shipdate<='1998-09-02'
-          |group by l_returnflag, l_linestatus
-          |order by l_returnflag, l_linestatus
-        """.stripMargin
-      val result = sql(q2)
-//      result.explain()
+      val result = sql(q1)
+//      result.explain(true)
       result.show(false)
     }
   }

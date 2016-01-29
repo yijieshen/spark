@@ -2,6 +2,7 @@ package org.apache.spark.sql.hive.orc;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgumentFactory;
 import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
@@ -16,6 +17,13 @@ import java.util.List;
 
 
 public class VectorizedOrcInputFormat extends FileInputFormat<Void, RowBatch> {
+
+  @Override
+  public InputSplit[] getSplits(JobConf job, int numSplits) throws IOException {
+    OrcInputFormat oif = new OrcInputFormat();
+    InputSplit[] splits = oif.getSplits(job, numSplits);
+    return splits;
+  }
 
   static class VectorizedOrcRecordReader implements RecordReader<Void, RowBatch> {
     private final long offset;

@@ -27,8 +27,7 @@ import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.MapData;
-import org.apache.spark.sql.types.DataType;
-import org.apache.spark.sql.types.Decimal;
+import org.apache.spark.sql.types.*;
 import org.apache.spark.unsafe.types.CalendarInterval;
 import org.apache.spark.unsafe.types.UTF8String;
 
@@ -144,10 +143,20 @@ public class RowBatch implements Serializable {
 
     @Override
     public InternalRow copy() {
-//      Object[] o = {getUTF8String(0).clone(),  getUTF8String(1).clone(), getDouble(2)};
-//      InternalRow row = new GenericInternalRow(o);
-//      return row;
-      throw new UnsupportedOperationException();
+      Object[] arr = new Object[numCols];
+      for (int i = 0; i < numCols; i ++) {
+        if (columns[i].dataType instanceof IntegerType) {
+          arr[i] = getInt(i);
+        } else if (columns[i].dataType instanceof LongType) {
+          arr[i] = getLong(i);
+        } else if (columns[i].dataType instanceof DoubleType) {
+          arr[i] = getDouble(i);
+        } else if (columns[i].dataType instanceof StringType) {
+          arr[i] = getUTF8String(i).clone();
+        }
+      }
+      return new GenericInternalRow(arr);
+//      throw new UnsupportedOperationException();
     }
 
     @Override

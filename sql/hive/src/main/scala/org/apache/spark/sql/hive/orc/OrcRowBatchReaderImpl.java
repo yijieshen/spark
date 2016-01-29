@@ -137,12 +137,13 @@ public class OrcRowBatchReaderImpl implements OrcRowBatchReader {
 
   @Override
   public float getProgress() throws IOException {
-    return 0;
+    return ((float) rowBaseInStripe + rowInStripe) / totalRowCount;
   }
 
   @Override
   public void close() throws IOException {
-
+    clearStreams();
+    file.close();
   }
 
   private void readStripe() throws IOException {
