@@ -32,8 +32,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Query 1") {
     withSQLConf(
-      ("spark.sql.vectorize.enabled", "false"),
-      ("spark.sql.vectorize.agg.enabled", "false")) {
+      ("spark.sql.vectorize.enabled", "true"),
+      ("spark.sql.vectorize.agg.enabled", "true")) {
       val lineitem = sqlContext.read.orc("hdfs://localhost:9000/tpch_orc/lineitem")
       lineitem.registerTempTable("lineitem")
       val q1 =

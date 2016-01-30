@@ -62,7 +62,8 @@ abstract class BatchAggregate {
 case class BatchCount(
     children: Seq[BatchExpression],
     underlyingFunction: AggregateFunction,
-    bufferOffset: Int) extends BatchAggregate {
+    bufferOffset: Int,
+    noGroupingExpr: Boolean) extends BatchAggregate {
 
   assert(children.size == 1, "only support single column count for now")
 
@@ -74,12 +75,37 @@ case class BatchCount(
     val batchSize = ctx.freshName("validSize")
     val sel = ctx.freshName("sel")
     val childV = ctx.freshName("childV")
+    val tmpCount = ctx.freshName("tmpCount")
 
-    eval.code + s"""
-      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
-      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-
-      ${ctx.javaType(child.dataType)}[] $childV = ${eval.value}.${ctx.vectorName(child.dataType)};
+    val bufferUpdate: String = if (noGroupingExpr) {
+      s"""
+      if (${eval.value}.noNulls) {
+        ${ctx.BUFFERS}[0].setLong($bufferOffset,
+          ${ctx.BUFFERS}[0].getLong($bufferOffset) + (long) $batchSize);
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else {
+        long $tmpCount = 0L;
+        if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              $tmpCount += 1L;
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              $tmpCount += 1L;
+            }
+          }
+        }
+        ${ctx.BUFFERS}[0].setLong($bufferOffset,
+          ${ctx.BUFFERS}[0].getLong($bufferOffset) + (long) $tmpCount);
+      }
+      """
+    } else {
+      s"""
       if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
           for (int j = 0; j < $batchSize; j ++) {
@@ -123,13 +149,22 @@ case class BatchCount(
         }
       }
     """
+    }
+
+    eval.code + s"""
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      ${ctx.javaType(child.dataType)}[] $childV = ${eval.value}.${ctx.vectorName(child.dataType)};
+      $bufferUpdate
+    """
   }
 }
 
 case class BatchAverage(
     child: BatchExpression,
     underlyingFunction: AggregateFunction,
-    bufferOffset: Int) extends BatchAggregate {
+    bufferOffset: Int,
+    noGroupingExpr: Boolean) extends BatchAggregate {
 
   private val dataType = DoubleType
 
@@ -140,18 +175,68 @@ case class BatchAverage(
 
   protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval = castedChild.gen(ctx)
+    val countOffset = bufferOffset + 1
 
     val batchSize = ctx.freshName("validSize")
     val sel = ctx.freshName("sel")
     val childV = ctx.freshName("childV")
+    val tmpSum = ctx.freshName("tmpSum")
+    val tmpCount = ctx.freshName("tmpCount")
 
-    val countOffset = bufferOffset + 1
-
-    eval.code + s"""
-      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
-      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-
-      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+    val bufferUpdate: String = if (noGroupingExpr) {
+      s"""
+      if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+        final ${ctx.javaType(dataType)} value = $childV[0];
+        ${ctx.javaType(dataType)} $tmpSum = $batchSize * value;
+        ${ctx.BUFFERS}[0].setDouble($bufferOffset,
+          ${ctx.BUFFERS}[0].getDouble($bufferOffset) + $tmpSum);
+        ${ctx.BUFFERS}[0].setLong($countOffset,
+          ${ctx.BUFFERS}[0].getLong($countOffset) + (long) $batchSize);
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else if (${eval.value}.noNulls) { // not repeating & no nulls
+        ${ctx.javaType(dataType)} $tmpSum = 0;
+        if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            $tmpSum += $childV[i];
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            $tmpSum += $childV[i];
+          }
+        }
+        ${ctx.BUFFERS}[0].setDouble($bufferOffset,
+          ${ctx.BUFFERS}[0].getDouble($bufferOffset) + $tmpSum);
+        ${ctx.BUFFERS}[0].setLong($countOffset,
+          ${ctx.BUFFERS}[0].getLong($countOffset) + (long) $batchSize);
+      } else {
+        ${ctx.javaType(dataType)} $tmpSum = 0;
+        long $tmpCount = 0L;
+        if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              $tmpSum += $childV[i];
+              $tmpCount += 1;
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              $tmpSum += $childV[i];
+              $tmpCount += 1;
+            }
+          }
+        }
+        ${ctx.BUFFERS}[0].setDouble($bufferOffset,
+          ${ctx.BUFFERS}[0].getDouble($bufferOffset) + $tmpSum);
+        ${ctx.BUFFERS}[0].setLong($countOffset,
+          ${ctx.BUFFERS}[0].getLong($countOffset) + $tmpCount);
+      }
+      """
+    } else {
+      s"""
       if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
         final ${ctx.javaType(dataType)} value = $childV[0];
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
@@ -205,6 +290,14 @@ case class BatchAverage(
           }
         }
       }
+      """
+    }
+
+    eval.code + s"""
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
     """
   }
 }
@@ -212,7 +305,8 @@ case class BatchAverage(
 case class BatchSum(
     child: BatchExpression,
     underlyingFunction: AggregateFunction,
-    bufferOffset: Int) extends BatchAggregate {
+    bufferOffset: Int,
+    noGroupingExpr: Boolean) extends BatchAggregate {
 
   val dataType = child.dataType
 
@@ -222,12 +316,59 @@ case class BatchSum(
     val batchSize = ctx.freshName("validSize")
     val sel = ctx.freshName("sel")
     val childV = ctx.freshName("childV")
+    val tmpSum = ctx.freshName("tmpSum")
 
-    eval.code + s"""
-      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
-      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-
-      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+    val bufferUpdate: String = if (noGroupingExpr) {
+      s"""
+      if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+        final ${ctx.javaType(dataType)} value = $childV[0];
+        ${ctx.javaType(dataType)} $tmpSum = $batchSize * value;
+        ${ctx.primitiveTypeName(dataType)} v =
+          ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+        v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
+        ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else if (${eval.value}.noNulls) { // not repeating & no nulls
+        ${ctx.javaType(dataType)} $tmpSum = 0;
+        if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            $tmpSum += $childV[i];
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            $tmpSum += $childV[i];
+          }
+        }
+        ${ctx.primitiveTypeName(dataType)} v =
+          ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+        v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
+        ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
+      } else {
+        ${ctx.javaType(dataType)} $tmpSum = 0;
+        if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              $tmpSum += $childV[i];
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              $tmpSum += $childV[i];
+            }
+          }
+        }
+        ${ctx.primitiveTypeName(dataType)} v =
+          ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+        v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
+        ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
+      }
+      """
+    } else {
+      s"""
       if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
         final ${ctx.javaType(dataType)} value = $childV[0];
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
@@ -287,6 +428,14 @@ case class BatchSum(
           }
         }
       }
+    """
+    }
+
+    eval.code + s"""
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
     """
   }
 }

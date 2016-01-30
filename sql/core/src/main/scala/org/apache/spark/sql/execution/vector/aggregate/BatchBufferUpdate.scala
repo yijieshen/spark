@@ -36,7 +36,16 @@ object GenerateBatchBufferUpdate extends CodeGenerator[Seq[Expression], BatchBuf
   protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
     in.map(BindReferences.bindReference(_, inputSchema))
 
-  protected def create(expressions: Seq[Expression]): BatchBufferUpdate = {
+  def generate(
+      in: Seq[Expression],
+      inputSchema: Seq[Attribute],
+      noGroupingExpr: Boolean): BatchBufferUpdate =
+    create(canonicalize(bind(in, inputSchema)), noGroupingExpr)
+
+  protected def create(expressions: Seq[Expression]): BatchBufferUpdate =
+    create(expressions, false)
+
+  protected def create(expressions: Seq[Expression], noGroupingExpr: Boolean): BatchBufferUpdate = {
     val ctx = newCodeGenContext()
 
     val updateClass = classOf[BatchBufferUpdate].getName
@@ -46,9 +55,18 @@ object GenerateBatchBufferUpdate extends CodeGenerator[Seq[Expression], BatchBuf
     var i = 0
     val batchAggFuncs = aggFuncs.map { case func =>
       func match {
-        case s: Sum => val x = BatchSum(exprToBatch(s.child), s, i); i += 1; x
-        case c: Count => val x = BatchCount(c.children.map(exprToBatch), c, i); i += 1; x
-        case a: Average => val x = BatchAverage(exprToBatch(a.child), a, i); i += 2; x
+        case s: Sum =>
+          val x = BatchSum(exprToBatch(s.child), s, i, noGroupingExpr)
+          i += 1
+          x
+        case c: Count =>
+          val x = BatchCount(c.children.map(exprToBatch), c, i, noGroupingExpr)
+          i += 1
+          x
+        case a: Average =>
+          val x = BatchAverage(exprToBatch(a.child), a, i, noGroupingExpr)
+          i += 2
+          x
         case _ => throw new NotImplementedException
       }
     }

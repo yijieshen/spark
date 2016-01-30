@@ -123,8 +123,11 @@ abstract class BatchAggregateIterator(
     GenerateBatchKeyWrapper.generate(groupingExpressions, inputAttributes)
 
   protected val updater: BatchBufferUpdate =
-    GenerateBatchBufferUpdate.generate(aggregateExpressions, inputAttributes)
+    GenerateBatchBufferUpdate.generate(
+      aggregateExpressions, inputAttributes, groupingExpressions.isEmpty)
 
+  protected val groupingProjection: UnsafeProjection =
+    UnsafeProjection.create(groupingExpressions, inputAttributes)
   protected val groupingAttributes = groupingExpressions.map(_.toAttribute)
 
   // Positions of those imperative aggregate functions in allAggregateFunctions.
@@ -264,7 +267,13 @@ class HashBasedBatchAggregateIterator(
 
   private def processInputs(fallbackStartsAt: Int): Unit = {
     if (groupingExpressions.isEmpty) {
-      // TODO
+      val groupingKey = groupingProjection.apply(null)
+      buffers(0).pointTo(hashMap.getAggregationBufferFromUnsafeRow(groupingKey));
+      while (inputIter.hasNext) {
+        val currentBatch = inputIter.next()
+        numInputRows += currentBatch.size
+        updater.update(currentBatch, buffers)
+      }
     } else {
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
