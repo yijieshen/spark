@@ -455,6 +455,12 @@ private[spark] object SQLConf {
     doc = "When true, SQL query would execute in vectorized mode when possible"
   )
 
+  val VECTORIZE_AGG_ENABLED = booleanConf("spark.sql.vectorize.agg.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would execute in vectorized mode when possible"
+  )
+
   object Deprecated {
     val MAPRED_REDUCE_TASKS = "mapred.reduce.tasks"
     val EXTERNAL_SORT = "spark.sql.planner.externalSort"
@@ -574,6 +580,9 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
   private[spark] def runSQLOnFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
   private[spark] def vectorizedExecutionEnabled(): Boolean = getConf(VECTORIZE_ENABLED)
+
+  private[spark] def vectorizedAGGExecutionEnabled(): Boolean = getConf(VECTORIZE_AGG_ENABLED)
+
 
   /** ********************** SQLConf functionality methods ************ */
 

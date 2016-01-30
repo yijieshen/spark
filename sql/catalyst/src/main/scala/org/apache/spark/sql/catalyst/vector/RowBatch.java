@@ -70,40 +70,33 @@ public class RowBatch implements Serializable {
     }
   }
 
-  public int[] bm() {
-    int tmp[] = new int[capacity];
-    if (!selectedInUse) {
-      Arrays.fill(tmp, 1);
+  public int[] getSelected() {
+    if (selectedInUse) {
+      return selected;
     } else {
-      Arrays.fill(tmp, 0);
+      int[] newSelected = new int[size]; // TODO: should we update the rowbatch's one
       for (int i = 0; i < size; i ++) {
-        tmp[selected[i]] = 1;
+        newSelected[i] = i;
       }
+      return newSelected;
     }
-    return tmp;
   }
 
   public Iterator<Row> rowIterator() {
-    final int capacity = RowBatch.this.capacity;
     final Row row = new Row();
     return new Iterator<Row>() {
-      int rowId = 0;
-      int[] bm = bm();
+      int idxInSelectedArray = 0;
+      int[] selected = getSelected();
 
       @Override
       public boolean hasNext() {
-        while (rowId < capacity && bm[rowId] == 0) {
-          rowId ++;
-        }
-        return rowId < capacity;
+        return idxInSelectedArray < size;
       }
 
       @Override
       public Row next() {
-        while (rowId < capacity && bm[rowId] == 0) {
-          rowId ++;
-        }
-        row.rowId = rowId++;
+        row.rowId = selected[idxInSelectedArray];
+        idxInSelectedArray += 1;
         return row;
       }
 

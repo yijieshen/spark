@@ -41,16 +41,17 @@ private[sql] case class PhysicalBatchRDD(
   override def canProcessUnsafeRows: Boolean = false
 
   protected override def doExecute(): RDD[InternalRow] =
-//    throw new UnsupportedOperationException(getClass.getName)
-    doBatchExecute().mapPartitions { iter =>
-      iter.map(_.rowIterator().asScala).flatten
-    }
+    throw new UnsupportedOperationException(getClass.getName)
+//    doBatchExecute().mapPartitions { iter =>
+//      iter.map(_.rowIterator().asScala).flatten
+//    }
 
   protected override def doBatchExecute(): RDD[RowBatch] = rdd
 
   override def simpleString: String = {
     val metadataEntries = for ((key, value) <- metadata.toSeq.sorted) yield s"$key: $value"
-    s"Scan $nodeName${output.mkString("[", ",", "]")}${metadataEntries.mkString(" ", ", ", "")}"
+    s"BatchScan $nodeName${output.mkString("[", ",", "]")}" +
+      s"${metadataEntries.mkString(" ", ", ", "")}"
   }
 }
 

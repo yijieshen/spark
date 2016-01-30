@@ -113,7 +113,7 @@ object Utils {
       aggregateFunctionToAttribute: Map[(AggregateFunction, Boolean), Attribute],
       resultExpressions: Seq[NamedExpression],
       child: SparkPlan,
-      vectorizeEnabled: Boolean): Seq[SparkPlan] = {
+      vectorizeAGGEnabled: Boolean): Seq[SparkPlan] = {
     // Check if we can use TungstenAggregate.
 
     // 1. Create an Aggregate Operator for partial aggregations.
@@ -126,7 +126,7 @@ object Utils {
       groupingAttributes ++
         partialAggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes)
 
-    val partialAggregate = if (vectorizeEnabled) {
+    val partialAggregate = if (vectorizeAGGEnabled) {
       createVectoriedAggregate(
         requiredChildDistributionExpressions = None,
         groupingExpressions = groupingExpressions,
