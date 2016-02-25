@@ -172,7 +172,8 @@ object Utils {
       functionsWithoutDistinct: Seq[AggregateExpression],
       aggregateFunctionToAttribute: Map[(AggregateFunction, Boolean), Attribute],
       resultExpressions: Seq[NamedExpression],
-      child: SparkPlan): Seq[SparkPlan] = {
+      child: SparkPlan,
+      vectorizeAGGEnabled: Boolean): Seq[SparkPlan] = {
 
     // functionsWithDistinct is guaranteed to be non-empty. Even though it may contain more than one
     // DISTINCT aggregate function, all of those functions will have the same column expressions.
@@ -196,13 +197,23 @@ object Utils {
       // We will group by the original grouping expression, plus an additional expression for the
       // DISTINCT column. For example, for AVG(DISTINCT value) GROUP BY key, the grouping
       // expressions will be [key, value].
-      createAggregate(
-        groupingExpressions = groupingExpressions ++ namedDistinctExpressions,
-        aggregateExpressions = aggregateExpressions,
-        aggregateAttributes = aggregateAttributes,
-        resultExpressions = groupingAttributes ++ distinctAttributes ++
-          aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
-        child = child)
+      if (vectorizeAGGEnabled) {
+        createVectoriedAggregate(
+          groupingExpressions = groupingExpressions ++ namedDistinctExpressions,
+          aggregateExpressions = aggregateExpressions,
+          aggregateAttributes = aggregateAttributes,
+          resultExpressions = groupingAttributes ++ distinctAttributes ++
+            aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+          child = child)
+      } else {
+        createAggregate(
+          groupingExpressions = groupingExpressions ++ namedDistinctExpressions,
+          aggregateExpressions = aggregateExpressions,
+          aggregateAttributes = aggregateAttributes,
+          resultExpressions = groupingAttributes ++ distinctAttributes ++
+            aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+          child = child)
+      }
     }
 
     // 2. Create an Aggregate Operator for partial merge aggregations.

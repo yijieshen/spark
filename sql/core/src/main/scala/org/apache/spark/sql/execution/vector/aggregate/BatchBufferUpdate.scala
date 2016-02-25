@@ -67,6 +67,14 @@ object GenerateBatchBufferUpdate extends CodeGenerator[Seq[Expression], BatchBuf
           val x = BatchAverage(exprToBatch(a.child), a, i, noGroupingExpr)
           i += 2
           x
+        case ma: Max =>
+          val x = BatchMax(exprToBatch(ma.child), ma, i, noGroupingExpr)
+          i += 1
+          x
+        case mi: Min =>
+          val x = BatchMin(exprToBatch(mi.child), mi, i, noGroupingExpr)
+          i += 1
+          x
         case _ => throw new NotImplementedException
       }
     }

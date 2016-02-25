@@ -225,7 +225,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
               functionsWithoutDistinct,
               aggregateFunctionToAttribute,
               rewrittenResultExpressions,
-              planLater(child))
+              planLater(child), vectorizeAGGEnabled)
           }
 
         aggregateOperator

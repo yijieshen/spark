@@ -201,7 +201,6 @@ abstract class BatchAggregateIterator(
 
   protected val generateOutput: (UnsafeRow, MutableRow) => UnsafeRow =
     generateResultProjection()
-
 }
 
 class HashBasedBatchAggregateIterator(
@@ -263,7 +262,7 @@ class HashBasedBatchAggregateIterator(
   )
 
   // reused buffers
-  private [this] val buffers = Array.fill[UnsafeRow](RowBatch.DEFAULT_SIZE)(new UnsafeRow())
+  private[this] val buffers = Array.fill[UnsafeRow](RowBatch.DEFAULT_SIZE)(new UnsafeRow())
 
   private def processInputs(fallbackStartsAt: Int): Unit = {
     if (groupingExpressions.isEmpty) {
@@ -368,5 +367,23 @@ class HashBasedBatchAggregateIterator(
     }
     numOutputRows += 1
     output
+  }
+
+  /**
+    * Generate a output row when there is no input and there is no grouping expression.
+    */
+  def outputForEmptyGroupingKeyWithoutInput(): UnsafeRow = {
+    if (groupingExpressions.isEmpty) {
+      val row = createNewAggregationBuffer()
+      row.copyFrom(initialAggregationBuffer)
+      // We create a output row and copy it. So, we can free the map.
+      val resultCopy =
+        generateOutput(UnsafeRow.createFromByteArray(0, 0), row).copy()
+      hashMap.free()
+      resultCopy
+    } else {
+      throw new IllegalStateException(
+        "This method should not be called when groupingExpressions is not empty.")
+    }
   }
 }

@@ -73,7 +73,7 @@ case class DissembleFromRowBatch(child: SparkPlan) extends UnaryNode {
   override def outputPartitioning: Partitioning = child.outputPartitioning
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
   override def outputRowBatches: Boolean = false
-  override def canProcessUnsafeRows: Boolean = true
+  override def canProcessUnsafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
   override def canProcessRows: Boolean = false
   override def doExecute(): RDD[InternalRow] = {

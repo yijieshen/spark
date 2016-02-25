@@ -74,7 +74,6 @@ case class BatchCount(
 
     val batchSize = ctx.freshName("validSize")
     val sel = ctx.freshName("sel")
-    val childV = ctx.freshName("childV")
     val tmpCount = ctx.freshName("tmpCount")
 
     val bufferUpdate: String = if (noGroupingExpr) {
@@ -154,7 +153,6 @@ case class BatchCount(
     eval.code + s"""
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-      ${ctx.javaType(child.dataType)}[] $childV = ${eval.value}.${ctx.vectorName(child.dataType)};
       $bufferUpdate
     """
   }
@@ -296,7 +294,7 @@ case class BatchAverage(
     eval.code + s"""
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
       $bufferUpdate
     """
   }
@@ -323,7 +321,7 @@ case class BatchSum(
       if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
         final ${ctx.javaType(dataType)} value = $childV[0];
         ${ctx.javaType(dataType)} $tmpSum = $batchSize * value;
-        ${ctx.primitiveTypeName(dataType)} v =
+        ${ctx.javaType(dataType)} v =
           ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
         v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
         ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
@@ -341,7 +339,7 @@ case class BatchSum(
             $tmpSum += $childV[i];
           }
         }
-        ${ctx.primitiveTypeName(dataType)} v =
+        ${ctx.javaType(dataType)} v =
           ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
         v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
         ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
@@ -361,7 +359,7 @@ case class BatchSum(
             }
           }
         }
-        ${ctx.primitiveTypeName(dataType)} v =
+        ${ctx.javaType(dataType)} v =
           ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
         v = ${ctx.BUFFERS}[0].isNullAt($bufferOffset) ? $tmpSum : $tmpSum + v;
         ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "v")};
@@ -374,14 +372,14 @@ case class BatchSum(
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
           for (int j = 0; j < $batchSize; j ++) {
             int i = $sel[j];
-            ${ctx.primitiveTypeName(dataType)} v =
+            ${ctx.javaType(dataType)} v =
               ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
             v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? value : value + v;
             ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
           }
         } else {
           for (int i = 0; i < $batchSize; i ++) {
-            ${ctx.primitiveTypeName(dataType)} v =
+            ${ctx.javaType(dataType)} v =
               ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
             v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? value : value + v;
             ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
@@ -393,14 +391,14 @@ case class BatchSum(
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
           for (int j = 0; j < $batchSize; j ++) {
             int i = $sel[j];
-            ${ctx.primitiveTypeName(dataType)} v =
+            ${ctx.javaType(dataType)} v =
               ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
             v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? $childV[i] : $childV[i] + v;
             ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
           }
         } else {
           for (int i = 0; i < $batchSize; i ++) {
-            ${ctx.primitiveTypeName(dataType)} v =
+            ${ctx.javaType(dataType)} v =
               ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
             v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? $childV[i] : $childV[i] + v;
             ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
@@ -411,7 +409,7 @@ case class BatchSum(
           for (int j = 0; j < $batchSize; j ++) {
             int i = $sel[j];
             if (!${eval.value}.isNull[i]) {
-              ${ctx.primitiveTypeName(dataType)} v =
+              ${ctx.javaType(dataType)} v =
                 ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
               v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? $childV[i] : $childV[i] + v;
               ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
@@ -420,7 +418,7 @@ case class BatchSum(
         } else {
           for (int i = 0; i < $batchSize; i ++) {
             if (!${eval.value}.isNull[i]) {
-              ${ctx.primitiveTypeName(dataType)} v =
+              ${ctx.javaType(dataType)} v =
                 ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
               v = ${ctx.BUFFERS}[i].isNullAt($bufferOffset) ? $childV[i] : $childV[i] + v;
               ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "v")};
@@ -434,7 +432,371 @@ case class BatchSum(
     eval.code + s"""
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-      ${ctx.javaType(dataType)}[] $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
+  }
+}
+
+case class BatchMax(
+    child: BatchExpression,
+    underlyingFunction: AggregateFunction,
+    bufferOffset: Int,
+    noGroupingExpr: Boolean) extends BatchAggregate {
+
+  val dataType = child.dataType
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+    val tmpMax = ctx.freshName("tmpMax")
+    val hasNotNull = ctx.freshName("hasNotNull")
+
+    val bufferUpdate: String = if (noGroupingExpr) {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          ${ctx.javaType(dataType)} value = $childV[0];
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, "value", "cur")})) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "value")};
+          }
+        } else if (${eval.value}.isRepeating) { // repeating & null
+          // do nothing here since it's all null
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          ${ctx.javaType(dataType)} $tmpMax = ${ctx.defaultValue(dataType)};
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (j == 0) {
+                $tmpMax = $childV[i];
+              } else {
+                $tmpMax =
+                  (${ctx.genGreater(dataType, s"$childV[i]", s"$tmpMax")}) ? $childV[i] : $tmpMax;
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (i == 0) {
+                $tmpMax = $childV[i];
+              } else {
+                $tmpMax =
+                  (${ctx.genGreater(dataType, s"$childV[i]", s"$tmpMax")}) ? $childV[i] : $tmpMax;
+              }
+            }
+          }
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, s"$tmpMax", "cur")})) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, s"$tmpMax")};
+          }
+        } else { // not repeating && nullable
+          boolean $hasNotNull = false;
+          ${ctx.javaType(dataType)} $tmpMax = ${ctx.defaultValue(dataType)};
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                if (!$hasNotNull) {
+                  $tmpMax = $childV[i];
+                } else {
+                  $tmpMax =
+                    (${ctx.genGreater(dataType, s"$childV[i]", s"$tmpMax")}) ? $childV[i] : $tmpMax;
+                }
+                $hasNotNull = true;
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                if (!$hasNotNull) {
+                  $tmpMax = $childV[i];
+                } else {
+                  $tmpMax =
+                    (${ctx.genGreater(dataType, s"$childV[i]", s"$tmpMax")}) ? $childV[i] : $tmpMax;
+                }
+                $hasNotNull = true;
+              }
+            }
+          }
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if ($hasNotNull && (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, s"$tmpMax", "cur")}))) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, s"$tmpMax")};
+          }
+        }
+      """
+    } else {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          final ${ctx.javaType(dataType)} value = $childV[0];
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          }
+        } else if (${eval.value}.isRepeating) {
+          // repeating && null, do nothing here
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          }
+        } else { // not repeating & has null
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+                if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                    (${ctx.genGreater(dataType, "value", "cur")})) {
+                  ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+                }
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+                if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                    (${ctx.genGreater(dataType, "value", "cur")})) {
+                  ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+                }
+              }
+            }
+          }
+        }
+      """
+    }
+
+    eval.code + s"""
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
+  }
+}
+
+case class BatchMin(
+  child: BatchExpression,
+  underlyingFunction: AggregateFunction,
+  bufferOffset: Int,
+  noGroupingExpr: Boolean) extends BatchAggregate {
+
+  val dataType = child.dataType
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+    val tmpMin = ctx.freshName("tmpMin")
+    val hasNotNull = ctx.freshName("hasNotNull")
+
+    val bufferUpdate: String = if (noGroupingExpr) {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          ${ctx.javaType(dataType)} value = $childV[0];
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, "cur", "value")})) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, "value")};
+          }
+        } else if (${eval.value}.isRepeating) { // repeating & null
+          // do nothing here since it's all null
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          ${ctx.javaType(dataType)} $tmpMin = ${ctx.defaultValue(dataType)};
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (j == 0) {
+                $tmpMin = $childV[i];
+              } else {
+                $tmpMin =
+                  (${ctx.genGreater(dataType, s"$tmpMin", s"$childV[i]")}) ? $childV[i] : $tmpMin;
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (i == 0) {
+                $tmpMin = $childV[i];
+              } else {
+                $tmpMin =
+                  (${ctx.genGreater(dataType, s"$tmpMin", s"$childV[i]")}) ? $childV[i] : $tmpMin;
+              }
+            }
+          }
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, "cur", s"$tmpMin")})) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, s"$tmpMin")};
+          }
+        } else { // not repeating && nullable
+          boolean $hasNotNull = false;
+          ${ctx.javaType(dataType)} $tmpMin = ${ctx.defaultValue(dataType)};
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                if (!$hasNotNull) {
+                  $tmpMin = $childV[i];
+                } else {
+                  $tmpMin =
+                    (${ctx.genGreater(dataType, s"$tmpMin", s"$childV[i]")}) ? $childV[i] : $tmpMin;
+                }
+                $hasNotNull = true;
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                if (!$hasNotNull) {
+                  $tmpMin = $childV[i];
+                } else {
+                  $tmpMin =
+                    (${ctx.genGreater(dataType, s"$tmpMin", s"$childV[i]")}) ? $childV[i] : $tmpMin;
+                }
+                $hasNotNull = true;
+              }
+            }
+          }
+          ${ctx.javaType(dataType)} cur =
+            ${ctx.getValue(s"${ctx.BUFFERS}[0]", dataType, s"$bufferOffset")};
+          if ($hasNotNull && (${ctx.BUFFERS}[0].isNullAt($bufferOffset) ||
+              (${ctx.genGreater(dataType, "cur", s"$tmpMin")}))) {
+            ${ctx.setColumn(s"${ctx.BUFFERS}[0]", dataType, bufferOffset, s"$tmpMin")};
+          }
+        }
+      """
+    } else {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          final ${ctx.javaType(dataType)} value = $childV[0];
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          }
+        } else if (${eval.value}.isRepeating) {
+          // repeating && null, do nothing here
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+              if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+              }
+            }
+          }
+        } else { // not repeating & has null
+          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+                if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                    (${ctx.genGreater(dataType, "cur", "value")})) {
+                  ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+                }
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getValue(s"${ctx.BUFFERS}[i]", dataType, s"$bufferOffset")};
+                if (${ctx.BUFFERS}[i].isNullAt($bufferOffset) ||
+                    (${ctx.genGreater(dataType, "cur", "value")})) {
+                  ${ctx.setColumn(s"${ctx.BUFFERS}[i]", dataType, bufferOffset, "value")};
+                }
+              }
+            }
+          }
+        }
+      """
+    }
+
+    eval.code + s"""
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
       $bufferUpdate
     """
   }

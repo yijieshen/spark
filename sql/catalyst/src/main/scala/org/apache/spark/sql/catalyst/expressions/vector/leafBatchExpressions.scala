@@ -34,7 +34,7 @@ case class BatchBoundReference(underlyingExpr: BoundReference) extends LeafBatch
   }
 }
 
-case class BatchLiteral (underlyingExpr: Literal) extends LeafBatchExpression {
+case class BatchLiteral(underlyingExpr: Literal) extends LeafBatchExpression {
   override def eval(input: RowBatch): ColumnVector = {
     val cv = new ColumnVector(input.capacity, dataType)
     cv.isRepeating = true
@@ -51,11 +51,12 @@ case class BatchLiteral (underlyingExpr: Literal) extends LeafBatchExpression {
     val v = dataType match {
       case StringType =>
         if (!underlyingExpr.nullable) {
+          val bytes = ctx.freshName("bytes")
           s"""
-            byte[] bytes = "${underlyingExpr.value}".getBytes();
-            ${ev.value}.bytesVector[0] = bytes;
+            byte[] $bytes = "${underlyingExpr.value}".getBytes();
+            ${ev.value}.bytesVector[0] = $bytes;
             ${ev.value}.starts[0] = 0;
-            ${ev.value}.lengths[0] = bytes.length;
+            ${ev.value}.lengths[0] = $bytes.length;
             ${ev.value}.isNull[0] = false;
           """
         } else {

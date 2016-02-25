@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.sql.catalyst.expressions.{In, InSet, Expression}
 import org.apache.spark.sql.catalyst.expressions.codegen.{GeneratedBatchExpressionCode, CodeGenContext}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
@@ -502,7 +502,7 @@ case class BatchEqualTo(
 
       // All rows with nulls has been filtered out, so just do normal filter for no-null case
       if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-        if (!${ctx.genEqual(left.dataType, s"$leftV[0]", s"$rightV[0]")}) {
+        if (!(${ctx.genEqual(left.dataType, s"$leftV[0]", s"$rightV[0]")})) {
           ${ctx.INPUT_ROWBATCH}.size = 0;
         }
       } else if (${eval1.value}.isRepeating) {
@@ -616,8 +616,252 @@ case class BatchAnd(
 
   override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval1 = left.gen(ctx)
-    val eval2 = left.gen(ctx)
+    val eval2 = right.gen(ctx)
     eval1.code + eval2.code
+  }
+}
+
+case class BatchIn(
+    child: BatchExpression,
+    list: Seq[Expression],
+    underlyingExpr: Expression) extends UnaryBatchExpression {
+
+  assert(list.forall(_.foldable), "only support all literals curently")
+  // TODO support null in list
+
+  val cType = child.dataType
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val nu = NullUtils.getClass.getName.stripSuffix("$")
+
+    val seqName = classOf[Seq[Any]].getName
+    val InName = classOf[In].getName
+
+    ctx.references += underlyingExpr
+    val seqTerm = ctx.freshName("seq")
+
+    val n = ctx.freshName("n")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+    val newSize = ctx.freshName("newSize")
+
+    val str = ctx.freshName("str")
+    ctx.addMutableState(seqName, seqTerm,
+      s"$seqTerm = (($InName)expressions[${ctx.references.size - 1}]).getList();")
+
+    val eval = child.gen(ctx)
+    cType match {
+      case StringType =>
+        s"""
+          ${eval.code}
+          int $n = ${ctx.INPUT_ROWBATCH}.size;
+          int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+
+          UTF8String $str = new UTF8String();
+
+          ${ctx.vectorArrayType(child.dataType)} $childV =
+            ${eval.value}.${ctx.vectorName(child.dataType)};
+
+          int $newSize;
+          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          if ($newSize < $n) {
+            $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
+            ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+          }
+
+          if ($n != 0 && ${eval.value}.isRepeating) {
+            $str.update($childV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
+            if (!$seqTerm.contains($str)) {
+              ${ctx.INPUT_ROWBATCH}.size = 0;
+            }
+          } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            $newSize = 0;
+            for (int j = 0; j < $n; j ++) {
+              int i = $sel[j];
+              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              if ($seqTerm.contains($str)) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            ${ctx.INPUT_ROWBATCH}.size = $newSize;
+          } else {
+            $newSize = 0;
+            for (int i = 0; i < $n; i ++) {
+              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              if ($seqTerm.contains($str)) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
+              ${ctx.INPUT_ROWBATCH}.size = $newSize;
+              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+            }
+          }
+        """
+      case _ =>
+        s"""
+          ${eval.code}
+          int $n = ${ctx.INPUT_ROWBATCH}.size;
+          int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+
+          ${ctx.vectorArrayType(child.dataType)} $childV =
+            ${eval.value}.${ctx.vectorName(child.dataType)};
+
+          int $newSize;
+          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          if ($newSize < $n) {
+            $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
+            ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+          }
+
+          if ($n != 0 && ${eval.value}.isRepeating) {
+            if (!$seqTerm.contains($childV[0])) {
+              ${ctx.INPUT_ROWBATCH}.size = 0;
+            }
+          } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            $newSize = 0;
+            for (int j = 0; j < $n; j ++) {
+              int i = $sel[j];
+              if ($seqTerm.contains($childV[i])) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            ${ctx.INPUT_ROWBATCH}.size = $newSize;
+          } else {
+            $newSize = 0;
+            for (int i = 0; i < $n; i ++) {
+              if ($seqTerm.contains($childV[i])) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
+              ${ctx.INPUT_ROWBATCH}.size = $newSize;
+              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+            }
+          }
+        """
+    }
+  }
+}
+
+case class BatchInSet(
+    child: BatchExpression,
+    hset: Set[Any],
+    underlyingExpr: Expression) extends UnaryBatchExpression {
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val nu = NullUtils.getClass.getName.stripSuffix("$")
+
+    val setName = classOf[Set[Any]].getName
+    val InSetName = classOf[InSet].getName
+
+    ctx.references += underlyingExpr
+    val hsetTerm = ctx.freshName("hset")
+    val hasNullTerm = ctx.freshName("hasNull")
+
+    val n = ctx.freshName("n")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+    val newSize = ctx.freshName("newSize")
+
+    val str = ctx.freshName("str")
+
+    ctx.addMutableState(setName, hsetTerm,
+      s"$hsetTerm = (($InSetName)expressions[${ctx.references.size - 1}]).getHSet();")
+    ctx.addMutableState("boolean", hasNullTerm, s"$hasNullTerm = $hsetTerm.contains(null);")
+
+    val eval = child.gen(ctx)
+    child.dataType match {
+      case StringType =>
+        s"""
+          ${eval.code}
+          int $n = ${ctx.INPUT_ROWBATCH}.size;
+          int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+
+          UTF8String $str = new UTF8String();
+
+          ${ctx.vectorArrayType(child.dataType)} $childV =
+            ${eval.value}.${ctx.vectorName(child.dataType)};
+
+          int $newSize;
+          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          if ($newSize < $n) {
+            $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
+            ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+          }
+
+          if ($n != 0 && ${eval.value}.isRepeating) {
+            $str.update($childV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
+            if (!$hsetTerm.contains($str)) {
+              ${ctx.INPUT_ROWBATCH}.size = 0;
+            }
+          } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            $newSize = 0;
+            for (int j = 0; j < $n; j ++) {
+              int i = $sel[j];
+              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              if ($hsetTerm.contains($str)) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            ${ctx.INPUT_ROWBATCH}.size = $newSize;
+          } else {
+            $newSize = 0;
+            for (int i = 0; i < $n; i ++) {
+              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              if ($hsetTerm.contains($str)) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
+              ${ctx.INPUT_ROWBATCH}.size = $newSize;
+              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+            }
+          }
+        """
+      case _ =>
+        s"""
+          ${eval.code}
+          int $n = ${ctx.INPUT_ROWBATCH}.size;
+          int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+
+          ${ctx.vectorArrayType(child.dataType)} $childV =
+            ${eval.value}.${ctx.vectorName(child.dataType)};
+
+          int $newSize;
+          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          if ($newSize < $n) {
+            $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
+            ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+          }
+
+          if ($n != 0 && ${eval.value}.isRepeating) {
+            if (!$hsetTerm.contains($childV[0])) {
+              ${ctx.INPUT_ROWBATCH}.size = 0;
+            }
+          } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
+            $newSize = 0;
+            for (int j = 0; j < $n; j ++) {
+              int i = $sel[j];
+              if ($hsetTerm.contains($childV[i])) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            ${ctx.INPUT_ROWBATCH}.size = $newSize;
+          } else {
+            $newSize = 0;
+            for (int i = 0; i < $n; i ++) {
+              if ($hsetTerm.contains($childV[i])) {
+                $sel[$newSize ++] = i;
+              }
+            }
+            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
+              ${ctx.INPUT_ROWBATCH}.size = $newSize;
+              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
+            }
+          }
+        """
+    }
   }
 }
 
@@ -651,7 +895,7 @@ case class BatchOr(
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
-        for (int i = 0; i < n; i ++) {
+        for (int i = 0; i < $initialSize; i ++) {
           $initialSelected[i] = i;
           $curSelected[i] = i;
         }
@@ -725,12 +969,12 @@ case class BatchNot(
     val unselectedSize = ctx.freshName("unselectedSize")
     s"""
       int $initialSize = ${ctx.INPUT_ROWBATCH}.size;
-      int $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
+      int[] $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
       int[] $initialSelected = new int[${RowBatch.DEFAULT_SIZE}];
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
-        for (int i = 0; i < n; i ++) {
+        for (int i = 0; i < $initialSize; i ++) {
           $initialSelected[i] = i;
           $curSelected[i] = i;
         }

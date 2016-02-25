@@ -123,6 +123,8 @@ case class In(value: Expression, list: Seq[Expression]) extends Predicate
     }
   }
 
+  def getList(): Seq[Any] = list.map(_.eval())
+
   override def children: Seq[Expression] = value +: list
 
   override def nullable: Boolean = children.exists(_.nullable)

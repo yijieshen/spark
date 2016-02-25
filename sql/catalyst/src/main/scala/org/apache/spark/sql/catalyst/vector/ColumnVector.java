@@ -98,6 +98,21 @@ public class ColumnVector implements Serializable {
     }
   }
 
+  public ColumnVector(ColumnVector cv) {
+    dataType = cv.dataType;
+    isNull = cv.isNull;
+    noNulls = cv.noNulls;
+    isRepeating = cv.isRepeating;
+    intVector = cv.intVector;
+    longVector = cv.longVector;
+    doubleVector = cv.doubleVector;
+    bytesVector = cv.bytesVector;
+    starts = new int[cv.starts.length];
+    lengths = new int[cv.lengths.length];
+    System.arraycopy(cv.starts, 0, starts, 0, cv.starts.length);
+    System.arraycopy(cv.lengths, 0, lengths, 0, cv.lengths.length);
+  }
+
   public static ColumnVector genIntegerColumnVector(int capacity) {
     ColumnVector cv = new ColumnVector(capacity);
     cv.dataType = IntegerType$.MODULE$;

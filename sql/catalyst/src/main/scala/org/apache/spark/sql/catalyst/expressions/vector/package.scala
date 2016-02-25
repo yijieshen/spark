@@ -30,6 +30,16 @@ package object vector {
       case m @ Multiply(l, r) => BatchMultiply(exprToBatch(l), exprToBatch(r), m)
       case d @ Divide(l, r) => BatchDivide(exprToBatch(l), exprToBatch(r), d)
 
+      case sw @ StartsWith(l, r) => BatchStartsWith(exprToBatch(l), exprToBatch(r), sw)
+      case ew @ EndsWith(l, r) => BatchEndsWith(exprToBatch(l), exprToBatch(r), ew)
+      case ct @ Contains(l, r) => BatchContains(exprToBatch(l), exprToBatch(r), ct)
+      case lk @ Like(l, r) => BatchLike(exprToBatch(l), exprToBatch(r), lk)
+      case i @ In(c, list) => BatchIn(exprToBatch(c), list, i)
+      case is @ InSet(c, hs) => BatchInSet(exprToBatch(c), hs, is)
+
+      case subs @ Substring(str, pos, len) =>
+        BatchSubstring(exprToBatch(str), exprToBatch(pos), exprToBatch(len), subs)
+
       case ge @ GreaterThanOrEqual(l, r) =>
         BatchGreaterThanOrEqual(exprToBatch(l), exprToBatch(r), ge)
       case gt @ GreaterThan(l, r) =>
@@ -45,6 +55,8 @@ package object vector {
       case n @ Not(l) => BatchNot(exprToBatch(l), n)
 
       case i @ If(p, t, f) => BatchIf(exprToBatch(p), exprToBatch(t), exprToBatch(f), i)
+      case c @ CaseWhen(exprs) => BatchCaseWhen(exprs.map(exprToBatch), c)
+
       case c @ Coalesce(children) => BatchCoalesce(children.map(exprToBatch), c)
       case c @ Cast(child, _) => BatchCast(exprToBatch(child), c)
       case in @ IsNull(c) => BatchIsNull(exprToBatch(c), in)

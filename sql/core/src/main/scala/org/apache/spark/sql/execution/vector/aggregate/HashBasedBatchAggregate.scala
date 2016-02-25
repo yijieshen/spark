@@ -21,7 +21,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
-import org.apache.spark.sql.catalyst.expressions.{Attribute, NamedExpression, Expression}
+import org.apache.spark.sql.catalyst.expressions.{UnsafeRow, Attribute, NamedExpression, Expression}
 import org.apache.spark.sql.catalyst.plans.physical.{UnspecifiedDistribution, ClusteredDistribution, AllTuples, Distribution}
 import org.apache.spark.sql.execution.aggregate.TungstenAggregate
 import org.apache.spark.sql.execution.metric.SQLMetrics
@@ -99,14 +99,28 @@ case class HashBasedBatchAggregate(
             numOutputRows,
             dataSize,
             spillSize)
-        if (!hasInput && groupingExpressions.isEmpty) {
-          val rb = iter.next()
-          numInputRows += rb.size
-          Iterator.empty // TODO
+        if (!hasInput && groupingExpressions.isEmpty) { // TODO: why this?
+          numOutputRows += 1
+          Iterator.single[UnsafeRow](aggregateIterator.outputForEmptyGroupingKeyWithoutInput())
         } else {
           aggregateIterator
         }
       }
+    }
+  }
+
+  override def simpleString: String = {
+    val allAggregateExpressions = aggregateExpressions
+
+    testFallbackStartsAt match {
+      case None =>
+        val keyString = groupingExpressions.mkString("[", ",", "]")
+        val functionString = allAggregateExpressions.mkString("[", ",", "]")
+        val outputString = output.mkString("[", ",", "]")
+        s"VectorizedAggregate(key=$keyString, functions=$functionString, output=$outputString)"
+      case Some(fallbackStartsAt) =>
+        s"VectorizedAggregateWithControlledFallback $groupingExpressions " +
+          s"$allAggregateExpressions $resultExpressions fallbackStartsAt=$fallbackStartsAt"
     }
   }
 }
