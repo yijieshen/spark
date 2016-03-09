@@ -78,12 +78,12 @@ private[sql] object EnsureRowFormats extends Rule[SparkPlan] {
   override def apply(operator: SparkPlan): SparkPlan = operator.transformUp {
     case operator: SparkPlan if onlyHandlesSafeRows(operator) =>
       if (operator.children.exists(_.outputsUnsafeRows) ||
-        operator.children.exists(_.outputRowBatches)) {
+        operator.children.exists(_.outputsRowBatches)) {
           operator.withNewChildren {
             operator.children.map { c =>
               if (c.outputsUnsafeRows) {
                 ConvertToSafe(c)
-              } else if (c.outputRowBatches) {
+              } else if (c.outputsRowBatches) {
                 DissembleFromRowBatch(c)
               } else {
                 c
@@ -97,7 +97,7 @@ private[sql] object EnsureRowFormats extends Rule[SparkPlan] {
       if (operator.children.exists(!_.outputsUnsafeRows)) {
         operator.withNewChildren {
           operator.children.map { c =>
-            if (c.outputRowBatches) {
+            if (c.outputsRowBatches) {
               ConvertToUnsafe(DissembleFromRowBatch(c))
             } else if (!c.outputsUnsafeRows) {
               ConvertToUnsafe(c)
@@ -116,25 +116,25 @@ private[sql] object EnsureRowFormats extends Rule[SparkPlan] {
         operator.withNewChildren {
           operator.children.map { c =>
             c match {
-              case c if (!c.outputsUnsafeRows && !c.outputRowBatches) => ConvertToUnsafe(c)
-              case c if (c.outputRowBatches) => ConvertToUnsafe(DissembleFromRowBatch(c))
+              case c if (!c.outputsUnsafeRows && !c.outputsRowBatches) => ConvertToUnsafe(c)
+              case c if (c.outputsRowBatches) => ConvertToUnsafe(DissembleFromRowBatch(c))
             }
           }
         }
-      } else if (operator.children.exists(_.outputRowBatches)) {
+      } else if (operator.children.exists(_.outputsRowBatches)) {
         operator.withNewChildren {
           operator.children.map { c =>
-            if (c.outputRowBatches) DissembleFromRowBatch(c) else c
+            if (c.outputsRowBatches) DissembleFromRowBatch(c) else c
           }
         }
       } else {
         operator
       }
     case operator: SparkPlan if onlyHandlesRowBatches(operator) =>
-      if (operator.children.exists(!_.outputRowBatches)) {
+      if (operator.children.exists(!_.outputsRowBatches)) {
         operator.withNewChildren {
           operator.children.map { c =>
-            if (!c.outputRowBatches) AssembleToRowBatch(c) else c
+            if (!c.outputsRowBatches) AssembleToRowBatch(c) else c
           }
         }
       } else {

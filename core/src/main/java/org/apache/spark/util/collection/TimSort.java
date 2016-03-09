@@ -164,6 +164,49 @@ class TimSort<K, Buffer> {
   }
 
   /**
+   * Variant of {@link #sort(Object, int, int, Comparator)} for sorting array which is partial sorted
+   * @param a
+   * @param lo
+   * @param hi
+   * @param c
+   */
+  public void msort(Buffer a, int lo, int hi, Comparator<? super K> c,
+                    Integer[] starts, Integer[] lengths) {
+    assert c != null;
+    assert starts.length == lengths.length;
+    assert starts[starts.length - 1] + lengths[lengths.length - 1] == hi - 1;
+
+    int nRemaining  = hi - lo;
+    if (nRemaining < 2)
+      return;  // Arrays of size 0 and 1 are always sorted
+
+    // If array is small, do a "mini-TimSort" with no merges
+    if (nRemaining < MIN_MERGE) {
+      int initRunLen = countRunAndMakeAscending(a, lo, hi, c);
+      binarySort(a, lo, hi, lo + initRunLen, c);
+      return;
+    }
+
+    /**
+     * March over the array once, left to right, finding natural runs,
+     * extending short natural runs to minRun elements, and merging runs
+     * to maintain stack invariant.
+     */
+    SortState sortState = new SortState(a, c, hi - lo);
+
+    // Push all runs onto pending-run stack one by one, and maybe merge
+    // this differs from the original sort for no need to identify runs
+    for (int i = 0; i < starts.length; i ++) {
+      sortState.pushRun(starts[i], lengths[i]);
+      sortState.mergeCollapse();
+    }
+
+    // Merge all remaining runs to complete sort
+    sortState.mergeForceCollapse();
+    assert sortState.stackSize == 1;
+  }
+
+  /**
    * Sorts the specified portion of the specified array using a binary
    * insertion sort.  This is the best method for sorting small numbers
    * of elements.  It requires O(n log n) compares, but O(n^2) data

@@ -98,9 +98,7 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
       class SpecificBatchProjection extends ${classOf[BatchProjection].getName} {
 
         private $exprType[] expressions;
-
         ${declareMutableStates(ctx)}
-
         ${declareAddedFunctions(ctx)}
 
         public SpecificBatchProjection($exprType[] expressions) {

@@ -15,19 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.spark.util.collection.unsafe.sort;
+package org.apache.spark.util.collection
 
-import org.apache.spark.memory.TaskMemoryManager;
+import java.util.Comparator
 
-public final class RecordPointerAndKeyPrefix {
-  /**
-   * A pointer to a record; see {@link TaskMemoryManager} for a
-   * description of how these addresses are encoded.
-   */
-  public long recordPointer;
+class MergeSorter[K, Buffer](private val s: SortDataFormat[K, Buffer]) {
+
+  private val timSort = new TimSort(s)
 
   /**
-   * A key prefix, for use in comparisons.
-   */
-  public long keyPrefix;
+    * Sorts the input buffer within range [lo, hi).
+    */
+  def sort(a: Buffer, lo: Int, hi: Int, c: Comparator[_ >: K],
+      starts: Array[Integer], lengths: Array[Integer]): Unit = {
+
+    timSort.msort(a, lo, hi, c, starts, lengths)
+  }
 }

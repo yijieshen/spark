@@ -33,7 +33,7 @@ case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) ext
   override private[sql] lazy val metrics = Map(
     "numRows" -> SQLMetrics.createLongMetric(sparkContext, "number of rows"))
 
-  override def outputRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
   override def outputsUnsafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
   override def canProcessSafeRows: Boolean = false
@@ -69,7 +69,7 @@ case class BatchFilter(condition: Expression, child: SparkPlan) extends UnaryNod
     "numInputRows" -> SQLMetrics.createLongMetric(sparkContext, "number of input rows"),
     "numOutputRows" -> SQLMetrics.createLongMetric(sparkContext, "number of output rows"))
 
-  override def outputRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
   override def outputsUnsafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
   override def canProcessSafeRows: Boolean = false

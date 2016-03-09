@@ -34,7 +34,7 @@ private[sql] case class PhysicalBatchRDD(
     override val metadata: Map[String, String] = Map.empty)
   extends LeafNode {
 
-  override def outputRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
   override def outputsUnsafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
   override def canProcessSafeRows: Boolean = false

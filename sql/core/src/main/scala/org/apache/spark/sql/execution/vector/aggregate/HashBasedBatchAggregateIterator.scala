@@ -17,16 +17,17 @@
 
 package org.apache.spark.sql.execution.vector.aggregate
 
-import org.apache.spark.sql.catalyst.vector.RowBatch
-import org.apache.spark.unsafe.KVIterator
-import org.apache.spark.{InternalAccumulator, TaskContext, Logging}
+import scala.collection.mutable.ArrayBuffer
+
+import org.apache.spark.{InternalAccumulator, Logging, TaskContext}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
+import org.apache.spark.sql.catalyst.expressions.vector.{GenerateUnsafeRowVectorConverter, UnsafeRowVectorConverter}
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.UnsafeFixedWidthAggregationMap
 import org.apache.spark.sql.execution.metric.LongSQLMetric
 import org.apache.spark.sql.types.StructType
-
-import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.unsafe.KVIterator
 
 abstract class BatchAggregateIterator(
     groupingExpressions: Seq[NamedExpression],
@@ -119,8 +120,8 @@ abstract class BatchAggregateIterator(
 
   private[this] def isTesting: Boolean = sys.props.contains("spark.testing")
 
-  protected val keyWrapper: BatchKeyWrapper =
-    GenerateBatchKeyWrapper.generate(groupingExpressions, inputAttributes)
+  protected val keyWrapper: UnsafeRowVectorConverter =
+    GenerateUnsafeRowVectorConverter.generate(groupingExpressions, inputAttributes)
 
   protected val updater: BatchBufferUpdate =
     GenerateBatchBufferUpdate.generate(

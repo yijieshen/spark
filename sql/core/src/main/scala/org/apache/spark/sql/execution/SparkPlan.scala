@@ -112,7 +112,7 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
   def canProcessSafeRows: Boolean = true
 
   /** Specifies whether this operator outputs RowBatches */
-  def outputRowBatches: Boolean = false
+  def outputsRowBatches: Boolean = false
 
   /** Specifies whether this operator is capable of processing RowBatches */
   def canProcessRowBatches: Boolean = false
@@ -129,8 +129,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
     if (children.nonEmpty) {
       val hasUnsafeInputs = children.exists(_.outputsUnsafeRows)
       val hasSafeInputs = children.count(_.outputsUnsafeRows) +
-        children.count(_.outputRowBatches) != children.size
-      val hasRowBatchInputs = children.exists(_.outputRowBatches)
+        children.count(_.outputsRowBatches) != children.size
+      val hasRowBatchInputs = children.exists(_.outputsRowBatches)
       assert(!(hasSafeInputs && hasUnsafeInputs && hasRowBatchInputs),
         "Child operators should output rows in the same format")
       assert(canProcessSafeRows || canProcessUnsafeRows || canProcessRowBatches,
@@ -150,8 +150,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
 
   final def batchExecute(): RDD[RowBatch] = {
     if (children.nonEmpty) {
-      val hasRowInput = children.exists(_.outputRowBatches)
-      val hasRowBatchInput = children.exists(!_.outputRowBatches)
+      val hasRowInput = children.exists(_.outputsRowBatches)
+      val hasRowBatchInput = children.exists(!_.outputsRowBatches)
       assert(!(hasRowInput && hasRowBatchInput),
         "Child operators should output rows or batches")
       // TODO: more checks here

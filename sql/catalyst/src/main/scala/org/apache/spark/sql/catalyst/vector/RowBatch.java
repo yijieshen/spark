@@ -149,7 +149,6 @@ public class RowBatch implements Serializable {
         }
       }
       return new GenericInternalRow(arr);
-//      throw new UnsupportedOperationException();
     }
 
     @Override

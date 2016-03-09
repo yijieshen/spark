@@ -1,13 +1,12 @@
-package org.apache.spark.sql.execution.vector.aggregate;
+package org.apache.spark.sql.catalyst.expressions.vector;
 
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 import org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder;
 import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter;
 import org.apache.spark.sql.catalyst.vector.ColumnVector;
 import org.apache.spark.sql.catalyst.vector.RowBatch;
-import org.apache.spark.unsafe.types.UTF8String;
 
-public class UnsafeRowVectorGen {
+public class UnsafeRowVectorWriter {
 
   /**
    * The default size for varlen columns. The row grows as necessary to accommodate the
@@ -24,7 +23,7 @@ public class UnsafeRowVectorGen {
   private UnsafeRowWriter[] writers;
   private RowBatch rowBatch;
 
-  public UnsafeRowVectorGen(int capacity, int numFields, int numVarFields) {
+  public UnsafeRowVectorWriter(int capacity, int numFields, int numVarFields) {
     this.capacity = capacity;
     this.numFields = numFields;
     this.numVarFields = numVarFields;

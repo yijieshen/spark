@@ -32,7 +32,7 @@ case class AssembleToRowBatch(child: SparkPlan) extends UnaryNode {
   override def output: Seq[Attribute] = child.output
   override def outputPartitioning: Partitioning = child.outputPartitioning
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
-  override def outputRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
   override def canProcessRowBatches: Boolean = false
   override def canProcessRows: Boolean = true
   override def doBatchExecute(): RDD[RowBatch] = {
@@ -72,7 +72,7 @@ case class DissembleFromRowBatch(child: SparkPlan) extends UnaryNode {
   override def output: Seq[Attribute] = child.output
   override def outputPartitioning: Partitioning = child.outputPartitioning
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
-  override def outputRowBatches: Boolean = false
+  override def outputsRowBatches: Boolean = false
   override def canProcessUnsafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
   override def canProcessRows: Boolean = false

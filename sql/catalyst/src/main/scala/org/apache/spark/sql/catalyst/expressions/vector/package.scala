@@ -62,6 +62,9 @@ package object vector {
       case in @ IsNull(c) => BatchIsNull(exprToBatch(c), in)
       case inn @ IsNotNull(c) => BatchIsNotNull(exprToBatch(c), inn)
 
+      case so @ SortOrder(c, d) => BatchSortOrder(exprToBatch(c), d, so)
+      case sp @ SortPrefix(c) => BatchSortPrefix(exprToBatch(c).asInstanceOf[BatchSortOrder], sp)
+
       case _ =>
         throw new UnsupportedOperationException(s"unable to convert $expr to its batch version")
     }

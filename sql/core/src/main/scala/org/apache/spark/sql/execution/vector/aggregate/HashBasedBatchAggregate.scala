@@ -48,7 +48,7 @@ case class HashBasedBatchAggregate(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size"),
     "spillSize" -> SQLMetrics.createSizeMetric(sparkContext, "spill size"))
 
-  override def outputRowBatches: Boolean = false // TODO: when we enable reduce side batch
+  override def outputsRowBatches: Boolean = false // TODO: when we enable reduce side batch
   override def outputsUnsafeRows: Boolean = true
   override def canProcessUnsafeRows: Boolean = false
   override def canProcessSafeRows: Boolean = false

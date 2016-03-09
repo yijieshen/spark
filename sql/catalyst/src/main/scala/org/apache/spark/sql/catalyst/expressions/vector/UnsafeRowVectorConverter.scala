@@ -15,19 +15,19 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.vector.aggregate
+package org.apache.spark.sql.catalyst.expressions.vector
 
-import org.apache.spark.sql.catalyst.expressions.vector._
-import org.apache.spark.sql.catalyst.expressions.{BindReferences, Attribute, Expression, UnsafeRow}
-import org.apache.spark.sql.catalyst.expressions.codegen.{ExpressionCanonicalizer, CodeGenerator}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, BindReferences, Expression, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenerator, ExpressionCanonicalizer}
 import org.apache.spark.sql.catalyst.vector.RowBatch
-import org.apache.spark.sql.types.{StringType, DoubleType, LongType, IntegerType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StringType}
 
-abstract class BatchKeyWrapper {
+abstract class UnsafeRowVectorConverter {
   def apply(input: RowBatch): Array[UnsafeRow]
 }
 
-object GenerateBatchKeyWrapper extends CodeGenerator[Seq[Expression], BatchKeyWrapper] {
+object GenerateUnsafeRowVectorConverter
+    extends CodeGenerator[Seq[Expression], UnsafeRowVectorConverter] {
 
   protected def canonicalize(in: Seq[Expression]): Seq[Expression] =
     in.map(ExpressionCanonicalizer.execute)
@@ -36,13 +36,13 @@ object GenerateBatchKeyWrapper extends CodeGenerator[Seq[Expression], BatchKeyWr
     in.map(BindReferences.bindReference(_, inputSchema))
 
 
-  protected def create(expressions: Seq[Expression]): BatchKeyWrapper = {
+  protected def create(expressions: Seq[Expression]): UnsafeRowVectorConverter = {
     val ctx = newCodeGenContext()
     val batchExpressions = expressions.map(exprToBatch)
     val numFields = expressions.size
     val numVarFields = expressions.map(_.dataType).filterNot(UnsafeRow.isFixedLength(_)).size
 
-    val vectorGenClass = classOf[UnsafeRowVectorGen].getName
+    val vectorGenClass = classOf[UnsafeRowVectorWriter].getName
 
     val vectorGen = ctx.freshName("vectorGen")
     ctx.addMutableState(vectorGenClass, vectorGen, s"this.$vectorGen = " +
@@ -69,7 +69,7 @@ object GenerateBatchKeyWrapper extends CodeGenerator[Seq[Expression], BatchKeyWr
         return new SpecificBatchKeyWrapper(exprs);
       }
 
-      class SpecificBatchKeyWrapper extends ${classOf[BatchKeyWrapper].getName} {
+      class SpecificBatchKeyWrapper extends ${classOf[UnsafeRowVectorConverter].getName} {
         private $exprType[] expressions;
 
         ${declareMutableStates(ctx)}
@@ -92,6 +92,6 @@ object GenerateBatchKeyWrapper extends CodeGenerator[Seq[Expression], BatchKeyWr
       }
     """
     val c = compile(code)
-    c.generate(ctx.references.toArray).asInstanceOf[BatchKeyWrapper]
+    c.generate(ctx.references.toArray).asInstanceOf[UnsafeRowVectorConverter]
   }
 }
