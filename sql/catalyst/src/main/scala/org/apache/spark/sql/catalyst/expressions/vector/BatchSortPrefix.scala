@@ -184,7 +184,8 @@ case class BatchSortPrefix(
       case _ => "Not implemented yet"
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;

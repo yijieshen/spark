@@ -65,6 +65,8 @@ package object vector {
       case so @ SortOrder(c, d) => BatchSortOrder(exprToBatch(c), d, so)
       case sp @ SortPrefix(c) => BatchSortPrefix(exprToBatch(c).asInstanceOf[BatchSortOrder], sp)
 
+      case mh @ Murmur3Hash(children, seed) => BatchMurmur3Hash(children.map(exprToBatch), seed, mh)
+
       case _ =>
         throw new UnsupportedOperationException(s"unable to convert $expr to its batch version")
     }

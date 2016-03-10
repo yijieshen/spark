@@ -22,7 +22,7 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.{InternalAccumulator, Logging, TaskContext}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
-import org.apache.spark.sql.catalyst.expressions.vector.{GenerateUnsafeRowVectorConverter, UnsafeRowVectorConverter}
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchProjection, GenerateUnsafeRowVectorConverter, UnsafeRowVectorConverter}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.UnsafeFixedWidthAggregationMap
 import org.apache.spark.sql.execution.metric.LongSQLMetric
@@ -122,6 +122,8 @@ abstract class BatchAggregateIterator(
 
   protected val keyWrapper: UnsafeRowVectorConverter =
     GenerateUnsafeRowVectorConverter.generate(groupingExpressions, inputAttributes)
+  protected val hasher: BatchProjection =
+    BatchProjection.create(new Murmur3Hash(groupingExpressions, 0) :: Nil, inputAttributes, false)
 
   protected val updater: BatchBufferUpdate =
     GenerateBatchBufferUpdate.generate(
@@ -278,20 +280,23 @@ class HashBasedBatchAggregateIterator(
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
         numInputRows += currentBatch.size
-        val groupingKeys = keyWrapper.apply(currentBatch)
+        val groupingKeys = keyWrapper(currentBatch)
+        val hashCodes = hasher(currentBatch).columns(0).intVector
 
         // TODO no enough spaces for hashmap to extend
         if (currentBatch.selectedInUse) {
           var j = 0
           while (j < currentBatch.size) {
             val i = currentBatch.selected(j)
-            buffers(i).pointTo(hashMap.getAggregationBufferFromUnsafeRow(groupingKeys(i)))
+            buffers(i).pointTo(
+              hashMap.getAggregationBufferFromUnsafeRow(groupingKeys(i), hashCodes(i)))
             j += 1
           }
         } else {
           var i = 0
           while (i < currentBatch.size) {
-            buffers(i).pointTo(hashMap.getAggregationBufferFromUnsafeRow(groupingKeys(i)))
+            buffers(i).pointTo(
+              hashMap.getAggregationBufferFromUnsafeRow(groupingKeys(i), hashCodes(i)))
             i += 1
           }
         }

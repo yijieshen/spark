@@ -153,6 +153,40 @@ public final class UnsafeFixedWidthAggregationMap {
     return currentAggregationBuffer;
   }
 
+  public UnsafeRow getAggregationBufferFromUnsafeRow(UnsafeRow unsafeGroupingKeyRow, int hashCode) {
+    // Probe our map using the serialized key
+    final BytesToBytesMap.Location loc = map.lookup(
+        unsafeGroupingKeyRow.getBaseObject(),
+        unsafeGroupingKeyRow.getBaseOffset(),
+        unsafeGroupingKeyRow.getSizeInBytes(),
+        hashCode);
+    if (!loc.isDefined()) {
+      // This is the first time that we've seen this grouping key, so we'll insert a copy of the
+      // empty aggregation buffer into the map:
+      boolean putSucceeded = loc.putNewKey(
+          unsafeGroupingKeyRow.getBaseObject(),
+          unsafeGroupingKeyRow.getBaseOffset(),
+          unsafeGroupingKeyRow.getSizeInBytes(),
+          emptyAggregationBuffer,
+          Platform.BYTE_ARRAY_OFFSET,
+          emptyAggregationBuffer.length
+      );
+      if (!putSucceeded) {
+        return null;
+      }
+    }
+
+    // Reset the pointer to point to the value that we just stored or looked up:
+    final MemoryLocation address = loc.getValueAddress();
+    currentAggregationBuffer.pointTo(
+        address.getBaseObject(),
+        address.getBaseOffset(),
+        aggregationBufferSchema.length(),
+        loc.getValueLength()
+    );
+    return currentAggregationBuffer;
+  }
+
   /**
    * Returns an iterator over the keys and values in this map. This uses destructive iterator of
    * BytesToBytesMap. So it is illegal to call any other method on this map after `iterator()` has

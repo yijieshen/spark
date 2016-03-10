@@ -150,7 +150,8 @@ case class BatchCount(
     """
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       $bufferUpdate
@@ -291,7 +292,8 @@ case class BatchAverage(
       """
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
@@ -429,7 +431,8 @@ case class BatchSum(
     """
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
@@ -611,7 +614,8 @@ case class BatchMax(
       """
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
@@ -793,7 +797,8 @@ case class BatchMin(
       """
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};

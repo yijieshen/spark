@@ -191,7 +191,8 @@ case class BatchIsNull(
     val sel = ctx.freshName("sel")
     val selectedInUse = ctx.freshName("selectedInUse")
     val newSize = ctx.freshName("newSize")
-    childEval.code + s"""
+    s"""
+      ${childEval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
@@ -220,7 +221,8 @@ case class BatchIsNotNull(
     val sel = ctx.freshName("sel")
     val selectedInUse = ctx.freshName("selectedInUse")
     val newSize = ctx.freshName("newSize")
-    childEval.code + s"""
+    s"""
+      ${childEval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;

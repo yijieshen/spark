@@ -453,11 +453,75 @@ public final class BytesToBytesMap extends MemoryConsumer {
             final Object storedkeyBase = keyAddress.getBaseObject();
             final long storedkeyOffset = keyAddress.getBaseOffset();
             final boolean areEqual = ByteArrayMethods.arrayEquals(
-              keyBase,
-              keyOffset,
-              storedkeyBase,
-              storedkeyOffset,
-              keyLength
+                keyBase,
+                keyOffset,
+                storedkeyBase,
+                storedkeyOffset,
+                keyLength
+            );
+            if (areEqual) {
+              return;
+            } else {
+              if (enablePerfMetrics) {
+                numHashCollisions++;
+              }
+            }
+          }
+        }
+      }
+      pos = (pos + step) & mask;
+      step++;
+    }
+  }
+
+  /**
+   * Looks up a key, and return a {@link Location} handle that can be used to test existence
+   * and read/write values.
+   *
+   * This function always return the same {@link Location} instance to avoid object allocation.
+   */
+  public Location lookup(Object keyBase, long keyOffset, int keyLength, int hashCode) {
+    safeLookup(keyBase, keyOffset, keyLength, loc, hashCode);
+    return loc;
+  }
+
+  /**
+   * Looks up a key, and saves the result in provided `loc`.
+   *
+   * This is a thread-safe version of `lookup`, could be used by multiple threads.
+   */
+  public void safeLookup(Object keyBase, long keyOffset, int keyLength, Location loc, int hash) {
+    assert(longArray != null);
+
+    if (enablePerfMetrics) {
+      numKeyLookups++;
+    }
+    final int hashcode = hash;
+    int pos = hashcode & mask;
+    int step = 1;
+    while (true) {
+      if (enablePerfMetrics) {
+        numProbes++;
+      }
+      if (longArray.get(pos * 2) == 0) {
+        // This is a new key.
+        loc.with(pos, hashcode, false);
+        return;
+      } else {
+        long stored = longArray.get(pos * 2 + 1);
+        if ((int) (stored) == hashcode) {
+          // Full hash code matches.  Let's compare the keys for equality.
+          loc.with(pos, hashcode, true);
+          if (loc.getKeyLength() == keyLength) {
+            final MemoryLocation keyAddress = loc.getKeyAddress();
+            final Object storedkeyBase = keyAddress.getBaseObject();
+            final long storedkeyOffset = keyAddress.getBaseOffset();
+            final boolean areEqual = ByteArrayMethods.arrayEquals(
+                keyBase,
+                keyOffset,
+                storedkeyBase,
+                storedkeyOffset,
+                keyLength
             );
             if (areEqual) {
               return;

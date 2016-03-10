@@ -36,7 +36,9 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
     val leftV = ctx.freshName("leftV")
     val rightV = ctx.freshName("rightV")
     val resultV = ctx.freshName("resultV")
-    eval1.code + eval2.code + s"""
+    s"""
+      ${eval1.code}
+      ${eval2.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
@@ -162,7 +164,9 @@ case class BatchDivide(
     val leftV = ctx.freshName("leftV")
     val rightV = ctx.freshName("rightV")
     val resultV = ctx.freshName("resultV")
-    eval1.code + eval2.code + s"""
+    s"""
+      ${eval1.code}
+      ${eval2.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 

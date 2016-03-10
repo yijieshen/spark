@@ -144,7 +144,8 @@ case class BatchCast(
       case _ => throw new UnimplementedException
     }
 
-    eval.code + s"""
+    s"""
+      ${eval.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
