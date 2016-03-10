@@ -223,6 +223,15 @@ abstract class Expression extends TreeNode[Expression] {
   protected def toCommentSafeString: String = this.toString
     .replace("*/", "\\*\\/")
     .replace("\\u", "\\\\u")
+
+  /**
+    * Returns SQL representation of this expression.  For expressions that don't have a SQL
+    * representation (e.g. `ScalaUDF`), this method should throw an `UnsupportedOperationException`.
+    */
+  @throws[UnsupportedOperationException](cause = "Expression doesn't have a SQL representation")
+  def sql: String = throw new UnsupportedOperationException(
+    s"Cannot map expression $this to its SQL representation"
+  )
 }
 
 
@@ -356,6 +365,8 @@ abstract class UnaryExpression extends Expression {
       """
     }
   }
+
+  override def sql: String = s"($prettyName(${child.sql}))"
 }
 
 
@@ -456,6 +467,8 @@ abstract class BinaryExpression extends Expression {
       """
     }
   }
+
+  override def sql: String = s"$prettyName(${left.sql}, ${right.sql})"
 }
 
 
@@ -492,6 +505,8 @@ abstract class BinaryOperator extends BinaryExpression with ExpectsInputTypes {
       TypeCheckResult.TypeCheckSuccess
     }
   }
+
+  override def sql: String = s"(${left.sql} $symbol ${right.sql})"
 }
 
 
@@ -592,5 +607,10 @@ abstract class TernaryExpression extends Expression {
         $resultCode
       """
     }
+  }
+
+  override def sql: String = {
+    val childrenSQL = children.map(_.sql).mkString(", ")
+    s"$prettyName($childrenSQL)"
   }
 }
