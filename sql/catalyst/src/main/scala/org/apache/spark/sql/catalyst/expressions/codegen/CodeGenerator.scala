@@ -231,6 +231,7 @@ class CodeGenContext {
     case LongType => "longVector"
     case DoubleType => "doubleVector"
     case StringType => "bytesVector"
+    case _: StructType => "rowVector"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
@@ -239,14 +240,17 @@ class CodeGenContext {
     case LongType => "long[]"
     case DoubleType => "double[]"
     case StringType => "byte[][]"
+    case _: StructType => "UnsafeRow[]"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
-  def newVector(capacity: String, dt: DataType): String = dt match {
+  def newVector(capacity: String, dt: DataType, ctx: CodeGenContext = null): String = dt match {
     case IntegerType => s"ColumnVector.genIntegerColumnVector($capacity)"
     case LongType => s"ColumnVector.genLongColumnVector($capacity)"
     case DoubleType => s"ColumnVector.genDoubleColumnVector($capacity)"
     case StringType => s"ColumnVector.genStringColumnVector($capacity)"
+    case _: StructType => s"ColumnVector.genUnsafeRowColumnVector(" +
+      s"$capacity, expressions[${ctx.references.size - 1}].dataType())"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 

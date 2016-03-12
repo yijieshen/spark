@@ -17,6 +17,12 @@
 
 package org.apache.spark.sql.execution.vector;
 
+import java.io.IOException;
+import java.util.Comparator;
+
+import scala.collection.Iterator;
+import scala.math.Ordering;
+
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.spark.SparkEnv;
 import org.apache.spark.TaskContext;
@@ -28,10 +34,6 @@ import org.apache.spark.sql.catalyst.vector.RowBatch;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.unsafe.Platform;
 import org.apache.spark.util.collection.unsafe.sort.*;
-import scala.collection.Iterator;
-import scala.math.Ordering;
-
-import java.io.IOException;
 
 final class UnsafeExternalRowBatchSorter {
 
@@ -44,28 +46,27 @@ final class UnsafeExternalRowBatchSorter {
   private long numRowsInserted = 0;
 
   private final StructType schema;
-  private final UnsafeRowVectorConverter rowVectorConverter;
+  private final BatchProjection rowVectorComputer;
   private final UnsafeExternalBatchSorter sorter;
-  private final BatchProjection orderingBatchComputer;
-  private final BatchOrdering innerBatchComparator;
+  private final BatchProjection prefixComputer;
+  private final PrefixComparator prefixComparator;
+  private final BatchOrdering innerBatchFullComparator;
   private final boolean needFurtherCompare;
-
-  // variables for one batch insertion
-  private Integer[] sortedIndices;
 
   public UnsafeExternalRowBatchSorter(
       StructType schema,
-      UnsafeRowVectorConverter rowVectorConverter,
-      BatchProjection orderingBatchComputer,
+      BatchProjection rowVectorComputer,
+      BatchProjection prefixComputer,
       Ordering<InternalRow> ordering,
       PrefixComparator prefixComparator,
-      BatchOrdering innerBatchComparator,
+      BatchOrdering innerBatchFullComparator,
       boolean furtherCompare,
       long pageSizeBytes) throws IOException {
     this.schema = schema;
-    this.rowVectorConverter = rowVectorConverter;
-    this.orderingBatchComputer = orderingBatchComputer;
-    this.innerBatchComparator = innerBatchComparator;
+    this.rowVectorComputer = rowVectorComputer;
+    this.prefixComputer = prefixComputer;
+    this.prefixComparator = prefixComparator;
+    this.innerBatchFullComparator = innerBatchFullComparator;
     this.needFurtherCompare = furtherCompare;
     final SparkEnv sparkEnv = SparkEnv.get();
     final TaskContext taskContext = TaskContext.get();
@@ -92,21 +93,35 @@ final class UnsafeExternalRowBatchSorter {
 
   @VisibleForTesting
   void insertBatch(RowBatch rb) throws IOException {
-    UnsafeRow[] rows = rowVectorConverter.apply(rb);
-    RowBatch orderingBatch = orderingBatchComputer.apply(rb);
-    long[] prefixes = orderingBatch.columns[0].longVector;
+    UnsafeRow[] rows = rowVectorComputer.apply(rb).columns[0].rowVector;
+    final long[] prefixes = prefixComputer.apply(rb).columns[0].longVector;
 
-    innerBatchComparator.reset(orderingBatch);
-
-    if (sortedIndices == null || sortedIndices.length < rb.capacity) {
-      sortedIndices = new Integer[rb.capacity];
+    Comparator<Integer> innerBatchComparator;
+    if (needFurtherCompare) {
+      innerBatchFullComparator.reset(rb);
+      innerBatchComparator = new Comparator<Integer>() {
+        @Override
+        public int compare(Integer i1, Integer i2) {
+          int cmp = prefixComparator.compare(prefixes[i1], prefixes[i2]);
+          if (cmp == 0) {
+            return innerBatchFullComparator.compare(i1, i2);
+          }
+          return cmp;
+        }
+      };
+    } else {
+      innerBatchComparator = new Comparator<Integer>() {
+        @Override
+        public int compare(Integer i1, Integer i2) {
+          return prefixComparator.compare(prefixes[i1], prefixes[i2]);
+        }
+      };
     }
-    SortUtils.sortIndexBy(
-      innerBatchComparator, sortedIndices, rb.selected, rb.size, rb.selectedInUse);
+    rb.sort(innerBatchComparator);
 
     sorter.startRowBatch();
     for (int j = 0; j < rb.size; j ++) {
-      int i = sortedIndices[j];
+      int i = rb.sorted[j];
       UnsafeRow row = rows[i];
       sorter.insertRecord(
         row.getBaseObject(),

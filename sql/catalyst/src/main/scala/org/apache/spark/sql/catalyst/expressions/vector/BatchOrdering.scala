@@ -23,7 +23,7 @@ import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
 
 /**
-  * Inherits some default implementation for Java from `Ordering[Row]`
+  * Inherits some default implementation for Java from `Ordering[Integer]`
   */
 class BatchOrdering extends Ordering[Integer] {
   def compare(a: Integer, b: Integer): Int = {
@@ -156,24 +156,14 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
 
 object BatchOrderings {
 
-  private val determinedByPrefix: Seq[DataType] =
-    BooleanType ::
-      ByteType :: ShortType :: IntegerType :: LongType ::
-      FloatType :: DoubleType :: Nil
-
-  /**
-    * get sort order with prefix, bind to (long, so(0), ...) as well
-    */
-  def genOrder(origin: Seq[SortOrder]): Seq[SortOrder] = {
-    val prefixOrder =
-      SortOrder(BoundReference(0, LongType, nullable = false), origin(0).direction)
-
-    if (origin.size == 1 && origin.forall(determinedByPrefix.contains)) {
-      prefixOrder :: Nil
-    } else {
-      prefixOrder +: origin.zipWithIndex.map { case (order, idx) =>
-        SortOrder(BoundReference(idx + 1, order.dataType, order.nullable), order.direction)
+  def needFurtherCompare(origin: Seq[SortOrder]): Boolean = {
+    if (origin == 1) {
+      origin(0).dataType match {
+        case _: IntegralType | FloatType | DoubleType => false
+        case _ => true
       }
+    } else {
+      true
     }
   }
 }

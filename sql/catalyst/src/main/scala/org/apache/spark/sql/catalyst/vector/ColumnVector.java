@@ -20,6 +20,7 @@ package org.apache.spark.sql.catalyst.vector;
 import java.io.Serializable;
 import java.util.Arrays;
 
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 import org.apache.spark.sql.types.*;
 import org.apache.spark.unsafe.types.UTF8String;
 
@@ -49,9 +50,9 @@ public class ColumnVector implements Serializable {
   public int[] starts;
   public int[] lengths;
 
-  public UTF8String str = new UTF8String();
+  public UnsafeRow[] rowVector;
 
-  public Object[] objectVector;
+  public UTF8String str = new UTF8String();
 
   public DataType dataType;
 
@@ -92,6 +93,8 @@ public class ColumnVector implements Serializable {
       bytesVector = new byte[capacity][];
       starts = new int[capacity];
       lengths = new int[capacity];
+    } else if (dt instanceof StructType) {
+      rowVector = new UnsafeRow[capacity];
     } else {
       throw new UnsupportedOperationException(dt + "is Not supported yet");
       // objectVector = new Object[capacity];
@@ -107,6 +110,7 @@ public class ColumnVector implements Serializable {
     longVector = cv.longVector;
     doubleVector = cv.doubleVector;
     bytesVector = cv.bytesVector;
+    rowVector = cv.rowVector;
     starts = new int[cv.starts.length];
     lengths = new int[cv.lengths.length];
     System.arraycopy(cv.starts, 0, starts, 0, cv.starts.length);
@@ -140,6 +144,13 @@ public class ColumnVector implements Serializable {
     cv.bytesVector = new byte[capacity][];
     cv.starts = new int[capacity];
     cv.lengths = new int[capacity];
+    return cv;
+  }
+
+  public static ColumnVector genUnsafeRowColumnVector(int capacity, DataType dt) {
+    ColumnVector cv = new ColumnVector(capacity);
+    cv.dataType = dt; // dummy type here
+    cv.rowVector = null;
     return cv;
   }
 

@@ -17,12 +17,54 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.sql.catalyst.expressions.{Expression, UnsafeRow}
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedBatchExpressionCode}
 import org.apache.spark.sql.catalyst.vector.{ColumnVector, RowBatch}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.hash.Murmur3_x86_32
+
+case class VectorsToRow(
+  children: Seq[BatchExpression], underlyingExpr: Expression) extends BatchExpression {
+
+  override def eval(input: RowBatch): ColumnVector = throw new UnsupportedOperationException
+
+  override protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val numFields = children.size
+    val numVarFields = children.map(_.dataType).filterNot(UnsafeRow.isFixedLength(_)).size
+
+    val childrenDts: Seq[DataType] = children.map(_.dataType)
+    val childrenCodes = children.map(_.gen(ctx))
+
+    val vectorGenClass = classOf[UnsafeRowVectorWriter].getName
+
+    val vectorGen = ctx.freshName("vectorGen")
+    ctx.addMutableState(vectorGenClass, vectorGen, s"this.$vectorGen = " +
+      s"new $vectorGenClass(${RowBatch.DEFAULT_SIZE}, $numFields, $numVarFields);")
+
+    ctx.references += this.underlyingExpr
+
+    val evals = childrenDts.zip(childrenCodes).zipWithIndex.map { case ((dt, eval), index) =>
+      val write = dt match {
+        case IntegerType => s"$vectorGen.writeColumnInteger($index, ${eval.value});"
+        case LongType => s"$vectorGen.writeColumnLong($index, ${eval.value});"
+        case DoubleType => s"$vectorGen.writeColumnDouble($index, ${eval.value});"
+        case StringType => s"$vectorGen.writeColumnUTF8String($index, ${eval.value});"
+        case _ => "Not Implemented"
+      }
+      s"""
+        ${eval.code}
+        $write
+      """
+    }.mkString("\n")
+    s"""
+      $vectorGen.reset(${ctx.INPUT_ROWBATCH});
+      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType, ctx)};
+      $evals
+      ${ev.value}.rowVector = $vectorGen.evaluate();
+    """
+  }
+}
 
 case class BatchMurmur3Hash(
     children: Seq[BatchExpression],

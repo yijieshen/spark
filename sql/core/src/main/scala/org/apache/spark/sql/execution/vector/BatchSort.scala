@@ -17,11 +17,13 @@
 
 package org.apache.spark.sql.execution.vector
 
+import java.util.Comparator
+
 import org.apache.spark.{InternalAccumulator, SparkEnv, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrderings, BatchProjection, GenerateBatchOrdering, GenerateUnsafeRowVectorConverter}
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrderings, BatchProjection, GenerateBatchOrdering}
 import org.apache.spark.sql.catalyst.plans.physical.{Distribution, OrderedDistribution, UnspecifiedDistribution}
 import org.apache.spark.sql.execution.{SortPrefixUtils, SparkPlan, UnaryNode}
 import org.apache.spark.sql.execution.metric.SQLMetrics
@@ -63,23 +65,22 @@ case class BatchSort(
     val spillSize = longMetric("spillSize")
 
     child.batchExecute().mapPartitionsInternal { iter =>
-      val rowVectorConverter = GenerateUnsafeRowVectorConverter.generate(child.output)
+      val rowVectorProjection = BatchProjection.create(output, output, false)
       val ordering = newOrdering(sortOrder, childOutput)
 
       val boundSortExpression = BindReferences.bindReference(sortOrder.head, childOutput)
       val prefixComparator = SortPrefixUtils.getPrefixComparator(boundSortExpression)
 
-      val orderBatchProjection = BatchProjection.create(
-        SortPrefix(sortOrder.head) +: sortOrder.map(_.child), childOutput, false)
+      val prefixProjection = BatchProjection.create(
+        SortPrefix(sortOrder.head) :: Nil, childOutput, false)
 
-      val derivedOrder = BatchOrderings.genOrder(sortOrder)
-      val needFurtherComparisonBesidesPrefix = derivedOrder.size > 1
-      val innerBatchComparator = GenerateBatchOrdering.generate(derivedOrder)
+      val needFurtherComparisonBesidesPrefix = BatchOrderings.needFurtherCompare(sortOrder)
+      val innerBatchFullComparator = GenerateBatchOrdering.generate(sortOrder, childOutput)
 
       val pageSize = SparkEnv.get.memoryManager.pageSizeBytes
       val sorter = new UnsafeExternalRowBatchSorter(
-        schema, rowVectorConverter, orderBatchProjection, ordering, prefixComparator,
-        innerBatchComparator, needFurtherComparisonBesidesPrefix, pageSize)
+        schema, rowVectorProjection, prefixProjection, ordering, prefixComparator,
+        innerBatchFullComparator, needFurtherComparisonBesidesPrefix, pageSize)
 
       if (testSpillFrequency > 0) {
         sorter.setTestSpillFrequency(testSpillFrequency)

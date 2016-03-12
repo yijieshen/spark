@@ -19,6 +19,7 @@ package org.apache.spark.sql.catalyst.vector;
 
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
@@ -39,6 +40,9 @@ public class RowBatch implements Serializable {
   public boolean selectedInUse; // if selected is valid
   public ColumnVector[] columns;
 
+  public Integer[] sorted; // array of sorted row indices
+  public boolean sortedInUse; // if sorted is valid
+
   public DataType[] fieldTypes;
   public List<String> colNames;
 
@@ -48,12 +52,39 @@ public class RowBatch implements Serializable {
 
   public static final int DEFAULT_SIZE = 1024;
 
+  public void sort(Comparator<Integer> comparator) {
+    sortedInUse = true;
+    if (selectedInUse) {
+      for (int i = 0; i < size; i ++) {
+        sorted[i] = selected[i];
+      }
+    } else {
+      for (int i = 0; i < size; i ++) {
+        sorted[i] = i;
+      }
+    }
+    Arrays.sort(sorted, comparator);
+  }
+
+  public void sort(final int[] sortedBy) {
+    Comparator<Integer> comparator =
+      new Comparator<Integer>() {
+        @Override
+        public int compare(Integer i1, Integer i2) {
+          return Integer.compare(sortedBy[i1], sortedBy[i2]);
+        }
+      };
+    sort(comparator);
+  }
+
   public RowBatch(int numCols, int capacity) {
     this.numCols = numCols;
     this.capacity = capacity;
     size = capacity;
     selected = new int[capacity];
     selectedInUse = false;
+    sorted = new Integer[capacity];
+    sortedInUse = false;
     columns = new ColumnVector[numCols];
   }
 
@@ -63,6 +94,7 @@ public class RowBatch implements Serializable {
 
   public void reset() {
     selectedInUse = false;
+    sortedInUse = false;
     size = capacity;
     endOfFile = false;
     for (ColumnVector col : columns) {

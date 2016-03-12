@@ -17,7 +17,9 @@
 
 package org.apache.spark.sql.execution.vector
 
+import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.physical.{Partitioning, RangePartitioning}
 import org.apache.spark.sql.execution._
@@ -66,4 +68,7 @@ case class BatchExchange(
       new SparkSqlSerializer(sparkConf)
     }
   }
+
+  override protected def doExecute(): RDD[InternalRow] =
+    throw new UnsupportedOperationException
 }

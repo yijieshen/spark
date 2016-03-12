@@ -32,6 +32,15 @@ import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 import org.apache.spark.unsafe.Platform
 
 /**
+ * Concat children value into UnsafeRow
+ */
+case class V2R(children: Seq[Expression]) extends Expression with Unevaluable {
+  override def nullable: Boolean = children.forall(_.nullable)
+  override def dataType: DataType = StructType(
+    children.zipWithIndex.map { case (e, i) =>
+      StructField(s"_$i", e.dataType, e.nullable)})
+}
+/**
  * A function that calculates an MD5 128-bit checksum and returns it as a hex string
  * For input of type [[BinaryType]]
  */

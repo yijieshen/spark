@@ -67,6 +67,8 @@ package object vector {
 
       case mh @ Murmur3Hash(children, seed) => BatchMurmur3Hash(children.map(exprToBatch), seed, mh)
 
+      case v @ V2R(children) => VectorsToRow(children.map(exprToBatch), v)
+
       case _ =>
         throw new UnsupportedOperationException(s"unable to convert $expr to its batch version")
     }

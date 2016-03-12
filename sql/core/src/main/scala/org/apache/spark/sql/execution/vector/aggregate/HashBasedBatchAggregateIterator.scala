@@ -22,7 +22,7 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.{InternalAccumulator, Logging, TaskContext}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
-import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchProjection, GenerateUnsafeRowVectorConverter, UnsafeRowVectorConverter}
+import org.apache.spark.sql.catalyst.expressions.vector.BatchProjection
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.UnsafeFixedWidthAggregationMap
 import org.apache.spark.sql.execution.metric.LongSQLMetric
@@ -120,8 +120,8 @@ abstract class BatchAggregateIterator(
 
   private[this] def isTesting: Boolean = sys.props.contains("spark.testing")
 
-  protected val keyWrapper: UnsafeRowVectorConverter =
-    GenerateUnsafeRowVectorConverter.generate(groupingExpressions, inputAttributes)
+  protected val keyWrapper: BatchProjection =
+    BatchProjection.create(V2R(groupingExpressions) :: Nil, inputAttributes, false)
   protected val hasher: BatchProjection =
     BatchProjection.create(new Murmur3Hash(groupingExpressions, 0) :: Nil, inputAttributes, false)
 
@@ -280,7 +280,7 @@ class HashBasedBatchAggregateIterator(
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
         numInputRows += currentBatch.size
-        val groupingKeys = keyWrapper(currentBatch)
+        val groupingKeys = keyWrapper(currentBatch).columns(0).rowVector
         val hashCodes = hasher(currentBatch).columns(0).intVector
 
         // TODO no enough spaces for hashmap to extend
