@@ -17,15 +17,15 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import org.apache.spark.sql.catalyst.expressions.codegen.{GeneratedBatchExpressionCode, CodeGenContext}
-import org.apache.spark.sql.catalyst.expressions.{Ascending, Expression, Unevaluable, SortDirection}
+import org.apache.spark.sql.catalyst.expressions.{Ascending, Expression, SortDirection}
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedBatchExpressionCode}
 import org.apache.spark.sql.types._
 import org.apache.spark.util.collection.unsafe.sort.PrefixComparators.DoublePrefixComparator
 
 case class BatchSortOrder(
     child: BatchExpression,
     direction: SortDirection,
-    underlyingExpr: Expression) extends UnaryBatchExpression with Unevaluable {
+    underlyingExpr: Expression) extends UnaryBatchExpression {
 
   override protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String =
     throw new UnsupportedOperationException(s"Cannot evaluate expression: $this")

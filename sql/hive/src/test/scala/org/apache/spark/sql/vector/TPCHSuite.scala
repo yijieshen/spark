@@ -609,4 +609,20 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       result.show(false)
     }
   }
+
+  test("Sort Merge") {
+    withSQLConf(
+      ("spark.sql.vectorize.enabled", "false"),
+      ("spark.sql.vectorize.agg.enabled", "false")) {
+      import sqlContext.implicits._
+
+      val result =
+        lineitem.join(orders, 'l_orderkey === 'o_orderkey)
+          .groupBy('o_custkey)
+          .agg(sum('l_quantity))
+
+      result.explain(true)
+      result.show(false)
+    }
+  }
 }

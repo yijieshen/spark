@@ -55,7 +55,7 @@ case class BatchMurmur3Hash(
           val bao = Platform.BYTE_ARRAY_OFFSET
           s"""
             ${cur.code}
-            $curV = ${cur.value}.${ctx.vectorName(StringType)};
+            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(StringType)};
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -106,7 +106,7 @@ case class BatchMurmur3Hash(
         case IntegerType =>
           s"""
             ${cur.code}
-            $curV = ${cur.value}.${ctx.vectorName(IntegerType)};
+            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(IntegerType)};
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -151,7 +151,7 @@ case class BatchMurmur3Hash(
         case LongType =>
           s"""
             ${cur.code}
-            $curV = ${cur.value}.${ctx.vectorName(LongType)};
+            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(LongType)};
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -196,7 +196,7 @@ case class BatchMurmur3Hash(
         case DoubleType =>
           s"""
             ${cur.code}
-            $curV = ${cur.value}.${ctx.vectorName(DoubleType)};
+            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(DoubleType)};
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {

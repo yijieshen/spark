@@ -37,8 +37,8 @@ class BatchOrdering extends Ordering[Integer] {
 
 object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering] {
 
-  protected def canonicalize(in: Seq[SortOrder]): Seq[Expression] =
-    in.map(ExpressionCanonicalizer.execute)
+  protected def canonicalize(in: Seq[SortOrder]): Seq[SortOrder] =
+    in.map(ExpressionCanonicalizer.execute(_).asInstanceOf[SortOrder])
 
   protected def bind(in: Seq[SortOrder], inputSchema: Seq[Attribute]): Seq[SortOrder] =
     in.map(BindReferences.bindReference(_, inputSchema))

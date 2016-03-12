@@ -17,8 +17,6 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector;
 
-import scala.math.Ordering;
-
 import java.util.Arrays;
 import java.util.Comparator;
 
@@ -44,7 +42,7 @@ public class SortUtils {
         indices[i] = i;
       }
     }
-    Arrays.sort(indices, 0, n, new Ordering<Integer>() {
+    Arrays.sort(indices, 0, n, new Comparator<Integer>() {
       public int compare(Integer i1, Integer i2) {
         return Integer.compare(sortedBy[i1], sortedBy[i2]);
       }
