@@ -65,7 +65,7 @@ case class BatchSort(
     val spillSize = longMetric("spillSize")
 
     child.batchExecute().mapPartitionsInternal { iter =>
-      val rowVectorProjection = BatchProjection.create(output, output, false)
+      val rowVectorProjection = BatchProjection.create(V2R(output) :: Nil, output, false)
       val ordering = newOrdering(sortOrder, childOutput)
 
       val boundSortExpression = BindReferences.bindReference(sortOrder.head, childOutput)

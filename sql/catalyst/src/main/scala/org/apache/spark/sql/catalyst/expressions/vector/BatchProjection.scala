@@ -34,7 +34,7 @@ object BatchProjection {
   def create(
       exprs: Seq[Expression],
       inputSchema: Seq[Attribute],
-      subexpressionEliminationEnabled: Boolean): BatchProjection = {
+      subexpressionEliminationEnabled: Boolean = false): BatchProjection = {
     val e = exprs.map(BindReferences.bindReference(_, inputSchema))
       .map(_ transform {
         case CreateStruct(children) => CreateStructUnsafe(children)

@@ -183,7 +183,7 @@ case class BatchDivide(
         ${eval1.value}, ${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
       $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}(${eval2.value}, ${ev.value},
-        $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse)
+        $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
 
       /*
        * Disregard nulls for processing. In other words,
@@ -245,3 +245,126 @@ case class BatchDivide(
   }
 }
 
+case class BatchPmod(
+    left: BatchExpression,
+    right: BatchExpression,
+    underlyingExpr: Expression) extends BinaryBatchArithmetic {
+
+  override def inputType: AbstractDataType = NumericType
+
+  override def symbol: String = "pmod"
+
+  override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val nu = NullUtils.getClass.getName.stripSuffix("$")
+
+    val eval1 = left.gen(ctx)
+    val eval2 = right.gen(ctx)
+    val batchSize = ctx.freshName("batchSize")
+    val sel = ctx.freshName("sel")
+    val selectedInUse = ctx.freshName("selectedInUse")
+    val leftV = ctx.freshName("leftV")
+    val rightV = ctx.freshName("rightV")
+    val resultV = ctx.freshName("resultV")
+
+    s"""
+      ${eval1.code}
+      ${eval2.code}
+      int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
+      int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
+      boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
+
+      ${ctx.vectorArrayType(left.dataType)} $leftV =
+        ${eval1.value}.${ctx.vectorName(left.dataType)};
+      ${ctx.vectorArrayType(right.dataType)} $rightV =
+        ${eval2.value}.${ctx.vectorName(right.dataType)};
+      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
+      ${ctx.vectorArrayType(dataType)} $resultV = ${ev.value}.${ctx.vectorName(dataType)};
+
+      ${ev.value}.isRepeating =
+        ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
+        ${eval1.value}.isRepeating && !${eval1.value}.noNulls && ${eval1.value}.isNull[0] ||
+        ${eval2.value}.isRepeating && !${eval2.value}.noNulls && ${eval2.value}.isNull[0];
+      $nu.propagateNullsForBinaryExpression(
+        ${eval1.value}, ${eval2.value}, ${ev.value},
+        $sel, $batchSize, $selectedInUse);
+      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}(${eval2.value}, ${ev.value},
+        $sel, $batchSize, $selectedInUse);
+
+      if (${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
+        ${ctx.javaType(dataType)} r = $leftV[0] % $rightV[0];
+        if (r < 0) {
+          $resultV[0] = (r + $rightV[0]) % $rightV[0];
+        } else {
+          $resultV[0] = r;
+        }
+      } else if (${eval1.value}.isRepeating) {
+        final ${ctx.javaType(left.dataType)} leftValue = $leftV[0];
+        if ($selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(dataType)} r = leftValue % $rightV[i];
+            if (r < 0) {
+              $resultV[i] = (r + $rightV[i]) % $rightV[i];
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(dataType)} r = leftValue % $rightV[i];
+            if (r < 0) {
+              $resultV[i] = (r + $rightV[i]) % $rightV[i];
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        }
+      } else if (${eval2.value}.isRepeating) {
+        final ${ctx.javaType(right.dataType)} rightValue = $rightV[0];
+        if (rightValue == 0) {
+          // this part is handled in propagateZeroDenomAsNulls
+        } else if ($selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(dataType)} r = $leftV[i] % rightValue;
+            if (r < 0) {
+              $resultV[i] = (r + rightValue) % rightValue;
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(dataType)} r = $leftV[i] % rightValue;
+            if (r < 0) {
+              $resultV[i] = (r + rightValue) % rightValue;
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        }
+      } else {
+        if ($selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(dataType)} r = $leftV[i] % $rightV[i];
+            if (r < 0) {
+              $resultV[i] = (r + $rightV[i]) % $rightV[i];
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(dataType)} r = $leftV[i] % $rightV[i];
+            if (r < 0) {
+              $resultV[i] = (r + $rightV[i]) % $rightV[i];
+            } else {
+              $resultV[i] = r;
+            }
+          }
+        }
+      }
+    """
+  }
+}

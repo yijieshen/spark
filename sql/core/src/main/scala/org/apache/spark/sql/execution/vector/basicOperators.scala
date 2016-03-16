@@ -80,7 +80,7 @@ case class BatchFilter(condition: Expression, child: SparkPlan) extends UnaryNod
   protected override def doExecute(): RDD[InternalRow] =
     throw new UnsupportedOperationException(getClass.getName)
 
-  protected override def doBatchExecute(): RDD[RowBatch] = attachTree(this, "execute"){
+  protected override def doBatchExecute(): RDD[RowBatch] = attachTree(this, "batchExecute") {
     val numInputRows = longMetric("numInputRows")
     val numOutputRows = longMetric("numOutputRows")
     child.batchExecute().mapPartitionsInternal { iter =>

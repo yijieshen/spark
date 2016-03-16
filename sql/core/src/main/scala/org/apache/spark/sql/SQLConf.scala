@@ -458,7 +458,19 @@ private[spark] object SQLConf {
   val VECTORIZE_AGG_ENABLED = booleanConf("spark.sql.vectorize.agg.enabled",
     defaultValue = Some(false),
     isPublic = true,
-    doc = "When true, SQL query would execute in vectorized mode when possible"
+    doc = "When true, SQL query would execute agg in vectorized mode when possible"
+  )
+
+  val VECTORIZE_SHUFFLE_ENABLED = booleanConf("spark.sql.vectorize.shuffle.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would execute shuffle in vectorized mode when possible"
+  )
+
+  val VECTORIZE_SORT_ENABLED = booleanConf("spark.sql.vectorize.sort.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would execute sort in vectorized mode when possible"
   )
 
   object Deprecated {
@@ -581,7 +593,11 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
 
   private[spark] def vectorizedExecutionEnabled(): Boolean = getConf(VECTORIZE_ENABLED)
 
-  private[spark] def vectorizedAGGExecutionEnabled(): Boolean = getConf(VECTORIZE_AGG_ENABLED)
+  private[spark] def vectorizedAGGEnabled(): Boolean = getConf(VECTORIZE_AGG_ENABLED)
+
+  private[spark] def vectorizedSortEnabled(): Boolean = getConf(VECTORIZE_SORT_ENABLED)
+
+  private[spark] def vectorizedShuffleEnabled(): Boolean = getConf(VECTORIZE_SHUFFLE_ENABLED)
 
 
   /** ********************** SQLConf functionality methods ************ */

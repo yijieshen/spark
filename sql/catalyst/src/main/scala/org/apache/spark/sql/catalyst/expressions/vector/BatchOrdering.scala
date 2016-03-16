@@ -54,6 +54,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
       dt match {
         case StringType =>
           s"""
+            ${eval.code}
             ${ctx.vectorArrayType(dt)} $childV = ${eval.value}.${ctx.vectorName(dt)};
             UTF8String $pa = new UTF8String();
             UTF8String $pb = new UTF8String();
@@ -85,6 +86,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
           """
         case _ =>
           s"""
+            ${eval.code}
             ${ctx.vectorArrayType(dt)} $childV = ${eval.value}.${ctx.vectorName(dt)};
             ${ctx.javaType(dt)} $pa;
             ${ctx.javaType(dt)} $pb;
@@ -133,7 +135,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
-        public SpecificOrdering($exprType[] expr) {
+        public SpecificBatchOrdering($exprType[] expr) {
           expressions = expr;
           ${initMutableStates(ctx)}
         }
@@ -142,8 +144,10 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
           this.current = rb;
         }
 
-        public int compare(Integer a, Integer b) {
+        public int compare(Integer ax, Integer bx) {
           RowBatch ${ctx.INPUT_ROWBATCH} = current;
+          int a = ax;
+          int b = bx;
           $comparisons
           return 0;
         }
@@ -157,7 +161,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
 object BatchOrderings {
 
   def needFurtherCompare(origin: Seq[SortOrder]): Boolean = {
-    if (origin == 1) {
+    if (origin.size == 1) {
       origin(0).dataType match {
         case _: IntegralType | FloatType | DoubleType => false
         case _ => true

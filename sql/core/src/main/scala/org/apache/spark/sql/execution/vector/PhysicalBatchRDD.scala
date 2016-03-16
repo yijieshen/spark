@@ -23,8 +23,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.vector.RowBatch
-import org.apache.spark.sql.execution.{PhysicalRDD, LeafNode}
-import org.apache.spark.sql.sources.{HadoopFsRelation, BaseRelation}
+import org.apache.spark.sql.execution.LeafNode
+import org.apache.spark.sql.sources.BaseRelation
 
 /** Physical plan node for scanning data from an RDD. */
 private[sql] case class PhysicalBatchRDD(

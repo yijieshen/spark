@@ -17,8 +17,8 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import org.apache.spark.sql.catalyst.expressions.{BindReferences, Attribute, Expression}
-import org.apache.spark.sql.catalyst.expressions.codegen.{ExpressionCanonicalizer, CodeGenerator}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, BindReferences, Expression}
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenerator, ExpressionCanonicalizer}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 
 abstract class BatchPredicate {

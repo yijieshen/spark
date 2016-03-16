@@ -29,6 +29,7 @@ package object vector {
       case s @ Subtract(l, r) => BatchSubtract(exprToBatch(l), exprToBatch(r), s)
       case m @ Multiply(l, r) => BatchMultiply(exprToBatch(l), exprToBatch(r), m)
       case d @ Divide(l, r) => BatchDivide(exprToBatch(l), exprToBatch(r), d)
+      case p @ Pmod(l, r) => BatchPmod(exprToBatch(l), exprToBatch(r), p)
 
       case sw @ StartsWith(l, r) => BatchStartsWith(exprToBatch(l), exprToBatch(r), sw)
       case ew @ EndsWith(l, r) => BatchEndsWith(exprToBatch(l), exprToBatch(r), ew)

@@ -30,6 +30,7 @@ import org.apache.spark.sql.catalyst.errors.attachTree
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.vector.{BatchExchange, BatchSort}
 import org.apache.spark.util.MutablePair
 
 /**
@@ -284,6 +285,10 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
 
   private def adaptiveExecutionEnabled: Boolean = sqlContext.conf.adaptiveExecutionEnabled
 
+  private def vectorizedShuffleEnabled: Boolean = sqlContext.conf.vectorizedShuffleEnabled
+
+  private def vectorizedSortEnabled: Boolean = sqlContext.conf.vectorizedSortEnabled
+
   private def minNumPostShufflePartitions: Option[Int] = {
     val minNumPostShufflePartitions = sqlContext.conf.minNumPostShufflePartitions
     if (minNumPostShufflePartitions > 0) Some(minNumPostShufflePartitions) else None
@@ -406,6 +411,8 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
     children = children.zip(requiredChildDistributions).map { case (child, distribution) =>
       if (child.outputPartitioning.satisfies(distribution)) {
         child
+      } else if (vectorizedShuffleEnabled && child.outputsRowBatches){
+        BatchExchange(createPartitioning(distribution, defaultNumPreShufflePartitions), child)
       } else {
         Exchange(createPartitioning(distribution, defaultNumPreShufflePartitions), child)
       }
@@ -482,7 +489,11 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
       if (requiredOrdering.nonEmpty) {
         // If child.outputOrdering is [a, b] and requiredOrdering is [a], we do not need to sort.
         if (requiredOrdering != child.outputOrdering.take(requiredOrdering.length)) {
-          Sort(requiredOrdering, global = false, child = child)
+          if (vectorizedSortEnabled && child.outputsRowBatches) {
+            BatchSort(requiredOrdering, global = false, child = child)
+          } else {
+            Sort(requiredOrdering, global = false, child = child)
+          }
         } else {
           child
         }

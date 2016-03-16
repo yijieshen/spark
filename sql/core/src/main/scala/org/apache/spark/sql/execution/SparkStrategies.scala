@@ -133,7 +133,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
    */
   case class Aggregation(sqlContext: SQLContext) extends Strategy {
     val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled()
-    val vectorizeAGGEnabled = sqlContext.conf.vectorizedAGGExecutionEnabled()
+    val vectorizeAGGEnabled = sqlContext.conf.vectorizedAGGEnabled()
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.Aggregate(groupingExpressions, resultExpressions, child) =>

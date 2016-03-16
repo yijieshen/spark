@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -52,29 +54,36 @@ public class RowBatch implements Serializable {
 
   public static final int DEFAULT_SIZE = 1024;
 
-  public void sort(Comparator<Integer> comparator) {
-    sortedInUse = true;
-    if (selectedInUse) {
-      for (int i = 0; i < size; i ++) {
-        sorted[i] = selected[i];
-      }
-    } else {
-      for (int i = 0; i < size; i ++) {
-        sorted[i] = i;
-      }
+  /**
+   * Constructor for serialization purpose only
+   * @param dataTypes
+   */
+  public RowBatch(DataType[] dataTypes) {
+    this.capacity = DEFAULT_SIZE;
+    this.numCols = dataTypes.length;
+    this.size = 0;
+    this.selectedInUse = false;
+    this.sortedInUse = false;
+    this.fieldTypes = dataTypes;
+    this.endOfFile = false;
+    this.columns = new ColumnVector[numCols];
+    for (int i = 0; i < numCols; i ++) {
+      columns[i] = new ColumnVector(DEFAULT_SIZE, dataTypes[i], true);
     }
-    Arrays.sort(sorted, comparator);
   }
 
-  public void sort(final int[] sortedBy) {
-    Comparator<Integer> comparator =
-      new Comparator<Integer>() {
-        @Override
-        public int compare(Integer i1, Integer i2) {
-          return Integer.compare(sortedBy[i1], sortedBy[i2]);
-        }
-      };
-    sort(comparator);
+  public void clear() {
+    this.size = 0;
+    this.endOfFile = false;
+    for (ColumnVector col : columns) {
+      col.clear();
+    }
+  }
+
+  public void writeToStream(DataOutputStream out) throws IOException {
+    for (ColumnVector col : columns) {
+      col.writeToStream(out);
+    }
   }
 
   public RowBatch(int numCols, int capacity) {
@@ -156,6 +165,31 @@ public class RowBatch implements Serializable {
     RowBatch rb = create(dts, DEFAULT_SIZE);
     rb.colNames = colNames;
     return rb;
+  }
+
+  public void sort(Comparator<Integer> comparator) {
+    sortedInUse = true;
+    if (selectedInUse) {
+      for (int i = 0; i < size; i ++) {
+        sorted[i] = selected[i];
+      }
+    } else {
+      for (int i = 0; i < size; i ++) {
+        sorted[i] = i;
+      }
+    }
+    Arrays.sort(sorted, comparator);
+  }
+
+  public void sort(final int[] sortedBy) {
+    Comparator<Integer> comparator =
+        new Comparator<Integer>() {
+          @Override
+          public int compare(Integer i1, Integer i2) {
+            return Integer.compare(sortedBy[i1], sortedBy[i2]);
+          }
+        };
+    sort(comparator);
   }
 
   public final class Row extends InternalRow {

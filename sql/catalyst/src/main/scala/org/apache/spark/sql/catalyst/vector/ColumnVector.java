@@ -17,11 +17,17 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 import org.apache.spark.sql.types.*;
+import org.apache.spark.unsafe.Platform;
 import org.apache.spark.unsafe.types.UTF8String;
 
 public class ColumnVector implements Serializable {
@@ -56,17 +62,251 @@ public class ColumnVector implements Serializable {
 
   public DataType dataType;
 
-  public static final int intNullValue = 1;
-  public static final int intOneValue = 1;
+  public ByteBuffer values;
+  public ByteBuffer nulls;
+  public int nullCount;
+  public int notNullCount;
+  public int pos;
 
-  public static final long longNullValue = 1L;
-  public static final long longOneValue = 1L;
+  public ColumnVector(int capacity, DataType dt, boolean ser) {
+    initialState();
+    this.dataType = dt;
+    nulls = ByteBuffer.allocate(1024);
+    nulls.order(ByteOrder.BIG_ENDIAN); // DataInputStream & DataOutputStream are big-endian
+    values = ByteBuffer.allocate(capacity * (dt instanceof IntegerType ? 4 : 8));
+    values.order(ByteOrder.BIG_ENDIAN);
+  }
 
-  public static final double doubleNullValue = Double.NaN;
-  public static final double doubleOneValue = 1.0;
+  private void initialState() {
+    this.nullCount = 0;
+    this.notNullCount = 0;
+    this.pos = 0;
+  }
 
-  public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
-  public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
+  public void clear() {
+    initialState();
+    nulls.clear();
+    values.clear();
+  }
+
+  public void writeToStream(DataOutputStream out) throws IOException {
+    out.writeInt(nullCount);
+    if (nullCount > 0) {
+      nulls.flip();
+      out.write(nulls.array(), 0, nulls.limit());
+    }
+    values.flip();
+    out.writeInt(notNullCount);
+    out.write(values.array(), 0, values.limit());
+  }
+
+  public void readFromStream(DataInputStream in) throws IOException {
+    reset();
+    int nullCount = in.readInt();
+    if (nullCount > 0) {
+      this.noNulls = false;
+      for (int i = 0; i < nullCount; i ++) {
+        this.isNull[i] = true;
+      }
+    }
+    int notNullCount = in.readInt();
+    if (dataType instanceof IntegerType) {
+      if (noNulls) {
+        for (int i = 0; i < notNullCount; i ++) {
+          intVector[i] = in.readInt();
+        }
+      } else {
+        for (int i = 0; i < nullCount + notNullCount; i ++) {
+          if (!isNull[i]) {
+            intVector[i] = in.readInt();
+          }
+        }
+      }
+    } else if (dataType instanceof LongType) {
+      if (noNulls) {
+        for (int i = 0; i < notNullCount; i ++) {
+          longVector[i] = in.readLong();
+        }
+      } else {
+        for (int i = 0; i < nullCount + notNullCount; i ++) {
+          if (!isNull[i]) {
+            longVector[i] = in.readLong();
+          }
+        }
+      }
+    } else if (dataType instanceof DoubleType) {
+      if (noNulls) {
+        for (int i = 0; i < notNullCount; i ++) {
+          doubleVector[i] = in.readDouble();
+        }
+      } else {
+        for (int i = 0; i < nullCount + notNullCount; i ++) {
+          if (!isNull[i]) {
+            doubleVector[i] = in.readDouble();
+          }
+        }
+      }
+    } else if (dataType instanceof StringType) {
+      Arrays.fill(starts, 0);
+      Arrays.fill(lengths, 0);
+      if (noNulls) {
+        for (int i = 0; i < notNullCount; i ++) {
+          lengths[i] = in.readInt();
+          if (bytesVector[i] == null || bytesVector[i].length < lengths[i]) {
+            bytesVector[i] = new byte[lengths[i]];
+          }
+          in.readFully(bytesVector[i], 0, lengths[i]);
+        }
+      } else {
+        for (int i = 0; i < nullCount + notNullCount; i ++) {
+          if (!isNull[i]) {
+            lengths[i] = in.readInt();
+            if (bytesVector[i] == null || bytesVector[i].length < lengths[i]) {
+              bytesVector[i] = new byte[lengths[i]];
+            }
+            in.readFully(bytesVector[i], 0, lengths[i]);
+          }
+        }
+      }
+    } else {
+      throw new UnsupportedOperationException(dataType + "is Not supported yet");
+    }
+  }
+
+  public void putIntCV(ColumnVector src, Integer[] positions, int from, int length) {
+    values = ensureFreeSpace(values, length * 4);
+    if (src.noNulls) {
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        values.putInt(src.intVector[i]);
+      }
+      notNullCount += length;
+      pos += length;
+    } else {
+      nulls = ensureFreeSpace(nulls, length * 4);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        if (src.isNull[i]) {
+          nullCount += 1;
+          nulls.putInt(pos);
+        } else {
+          notNullCount += 1;
+          values.putInt(src.intVector[i]);
+        }
+        pos += 1;
+      }
+    }
+  }
+
+  public void putLongCV(ColumnVector src, Integer[] positions, int from, int length) {
+    values = ensureFreeSpace(values, length * 8);
+    if (src.noNulls) {
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        values.putLong(src.longVector[i]);
+      }
+      notNullCount += length;
+      pos += length;
+    } else {
+      nulls = ensureFreeSpace(nulls, length * 4);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        if (src.isNull[i]) {
+          nullCount += 1;
+          nulls.putInt(pos);
+        } else {
+          notNullCount += 1;
+          values.putLong(src.longVector[i]);
+        }
+        pos += 1;
+      }
+    }
+  }
+
+  public void putDoubleCV(ColumnVector src, Integer[] positions, int from, int length) {
+    values = ensureFreeSpace(values, length * 8);
+    if (src.noNulls) {
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        values.putDouble(src.doubleVector[i]);
+      }
+      notNullCount += length;
+      pos += length;
+    } else {
+      nulls = ensureFreeSpace(nulls, length * 4);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        if (src.isNull[i]) {
+          nullCount += 1;
+          nulls.putInt(pos);
+        } else {
+          notNullCount += 1;
+          values.putDouble(src.doubleVector[i]);
+        }
+        pos += 1;
+      }
+    }
+  }
+
+  public void putStringCV(ColumnVector src, Integer[] positions, int from, int length) {
+    values = ensureFreeSpace(values, length * 8);
+    if (src.noNulls) {
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        values = ensureFreeSpace(values, 4 + src.lengths[i]);
+        values.putInt(src.lengths[i]);
+        writeTo(src, i, values);
+      }
+      notNullCount += length;
+      pos += length;
+    } else {
+      nulls = ensureFreeSpace(nulls, length * 4);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        if (src.isNull[i]) {
+          nullCount += 1;
+          nulls.putInt(pos);
+        } else {
+          notNullCount += 1;
+          values = ensureFreeSpace(values, 4 + src.lengths[i]);
+          values.putInt(src.lengths[i]);
+          writeTo(src, i, values);
+        }
+        pos += 1;
+      }
+    }
+  }
+
+  private void writeToMemory(ColumnVector src, int i, Object target, long targetOffset) {
+    Platform.copyMemory(src.bytesVector[i], src.starts[i] + Platform.BYTE_ARRAY_OFFSET,
+      target, targetOffset, src.lengths[i]);
+  }
+
+  private void writeTo(ColumnVector src, int i, ByteBuffer buffer) {
+    assert(buffer.hasArray());
+    byte[] target = buffer.array();
+    int offset = buffer.arrayOffset();
+    int pos = buffer.position();
+    writeToMemory(src, i, target, Platform.BYTE_ARRAY_OFFSET + offset + pos);
+    buffer.position(pos + src.lengths[i]);
+  }
+
+
+  private ByteBuffer ensureFreeSpace(ByteBuffer orig, int size) {
+    if (orig.remaining() >= size) {
+      return orig;
+    } else {
+      // grow in steps of initial size
+      int capacity = orig.capacity();
+      int newSize = capacity + Math.max(size, capacity);
+      int pos = orig.position();
+
+      return ByteBuffer
+        .allocate(newSize)
+        .order(ByteOrder.nativeOrder())
+        .put(orig.array(), 0, pos);
+    }
+  }
 
   private ColumnVector(int capacity) {
     isNull = new boolean[capacity];
@@ -229,4 +469,16 @@ public class ColumnVector implements Serializable {
       // objectVector[rowId] = value;
     }
   }
+
+  public static final int intNullValue = 1;
+  public static final int intOneValue = 1;
+
+  public static final long longNullValue = 1L;
+  public static final long longOneValue = 1L;
+
+  public static final double doubleNullValue = Double.NaN;
+  public static final double doubleOneValue = 1.0;
+
+  public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
+  public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
 }

@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.vector
 
-import org.apache.spark.sql.QueryTest
+import org.apache.spark.sql.{SQLConf, QueryTest}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.hive.test.TestHiveSingleton
 import org.apache.spark.sql.test.SQLTestUtils
@@ -612,14 +612,15 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Sort Merge") {
     withSQLConf(
-      ("spark.sql.vectorize.enabled", "false"),
-      ("spark.sql.vectorize.agg.enabled", "false")) {
+      (SQLConf.VECTORIZE_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
         lineitem.join(orders, 'l_orderkey === 'o_orderkey)
-          .groupBy('o_custkey)
-          .agg(sum('l_quantity))
+          .agg(count('l_quantity))
 
       result.explain(true)
       result.show(false)
