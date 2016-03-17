@@ -178,7 +178,7 @@ public class RowBatch implements Serializable {
         sorted[i] = i;
       }
     }
-    Arrays.sort(sorted, comparator);
+    Arrays.sort(sorted, 0, size, comparator);
   }
 
   public void sort(final int[] sortedBy) {

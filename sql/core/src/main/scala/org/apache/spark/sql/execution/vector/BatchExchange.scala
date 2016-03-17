@@ -24,10 +24,10 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
-import org.apache.spark.sql.catalyst.expressions.Attribute
+import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchInsertion}
 import org.apache.spark.sql.catalyst.plans.physical._
-import org.apache.spark.sql.catalyst.vector.{ColumnVector, RowBatch}
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution._
 
 case class BatchExchange(
@@ -106,17 +106,16 @@ case class BatchExchange(
         new PartitionIdPassthrough(n)
       case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
     }
-    def getPartitionKeyExtractor(): RowBatch => ColumnVector = newPartitioning match {
+    def getPartitionKeyExtractor(): BatchProjection = newPartitioning match {
       case h: HashPartitioning =>
-        val projection = BatchProjection.create(h.partitionIdExpression :: Nil, child.output)
-        rb => projection(rb).columns(0)
+        BatchProjection.create(h.partitionIdExpression :: Nil, child.output)
       case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
     }
 
     def sortRowsByPartition(
         iterator: Iterator[RowBatch],
         numPartitions: Int,
-        partitionKeyExtractor: RowBatch => ColumnVector): Iterator[Product2[Int, RowBatch]] = {
+        partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
       val batchInsertion = GenerateBatchInsertion.generate(output)
 
       new Iterator[Product2[Int, RowBatch]] {
@@ -127,40 +126,47 @@ case class BatchExchange(
 
         def populateRBs(): Unit = {
           while (iterator.hasNext && fullBatches.isEmpty) {
-            val rb = iterator.next()
-            val partitionKey = partitionKeyExtractor(rb).intVector
-            rb.sort(partitionKey)
+            val current = iterator.next()
+            val partitionKey = partitionKeyExtractor(current).columns(0).intVector
+            current.sort(partitionKey)
 
             var curPID: Int = -1    // currentPartitionId
             var numRows: Int = 0    // numRowsInCurrentPartition
             var startIdx: Int = -1  // currentPartitionStartIdx
             var j = 0
-            while (j < rb.size) {
-              var i = rb.sorted(j)
+            while (j < current.size) {
+              var i = current.sorted(j)
               curPID = partitionKey(i)
               startIdx = j
-              while (partitionKey(i) == curPID && j < rb.size) {
-                i = rb.sorted(j)
+
+              while (partitionKey(i) == curPID && j < current.size - 1) {
+                numRows += 1
+                j += 1
+                i = current.sorted(j)
+              }
+              if (partitionKey(i) == curPID && j == current.size - 1) {
                 numRows += 1
                 j += 1
               }
+
               if (rbBuffers(curPID) == null) {
                 rbBuffers(curPID) = RowBatchPool.get()
               }
               if (rbBuffers(curPID).size + numRows > rbBuffers(curPID).capacity) {
                 val recordsInserted = rbBuffers(curPID).capacity - rbBuffers(curPID).size
-                batchInsertion.insert(rb, rbBuffers(curPID), startIdx, recordsInserted)
+                batchInsertion.insert(current, rbBuffers(curPID), startIdx, recordsInserted)
                 fullBatches.enqueue((curPID, rbBuffers(curPID)))
                 rbBuffers(curPID) = RowBatchPool.get()
                 batchInsertion.insert(
-                  rb, rbBuffers(curPID), startIdx + recordsInserted, numRows - recordsInserted)
+                  current, rbBuffers(curPID), startIdx + recordsInserted, numRows - recordsInserted)
               } else if (rbBuffers(curPID).size + numRows == rbBuffers(curPID).capacity) {
-                batchInsertion.insert(rb, rbBuffers(curPID), startIdx, numRows)
+                batchInsertion.insert(current, rbBuffers(curPID), startIdx, numRows)
                 fullBatches.enqueue((curPID, rbBuffers(curPID)))
                 rbBuffers(curPID) = null
               } else {
-                batchInsertion.insert(rb, rbBuffers(curPID), startIdx, numRows)
+                batchInsertion.insert(current, rbBuffers(curPID), startIdx, numRows)
               }
+
               curPID = -1
               numRows = 0
             }
