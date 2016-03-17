@@ -215,7 +215,7 @@ case class BatchExchange(
       }
     }
     val rddWithPartitionCV: RDD[Product2[Int, RowBatch]] = {
-      if (part.numPartitions < bypassThreshold) {
+      if (part.numPartitions <= bypassThreshold) {
         rdd.mapPartitions { iter =>
           val getPartitionKey = getPartitionKeyExtractor()
           sortRowsByPartition(iter, part.numPartitions, getPartitionKey)

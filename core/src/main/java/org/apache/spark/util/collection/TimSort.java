@@ -174,7 +174,7 @@ class TimSort<K, Buffer> {
                     Integer[] starts, Integer[] lengths) {
     assert c != null;
     assert starts.length == lengths.length;
-    assert starts[starts.length - 1] + lengths[lengths.length - 1] == hi - 1;
+    assert starts[starts.length - 1] + lengths[lengths.length - 1] == hi;
 
     int nRemaining  = hi - lo;
     if (nRemaining < 2)

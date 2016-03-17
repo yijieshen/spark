@@ -144,7 +144,7 @@ public final class UnsafeInMemoryBatchSorter {
   public void startRowBatch() {
     assert !rowBatchStarted;
     rowBatchStarted = true;
-    startsList.add(pos);
+    startsList.add(pos / 2);
     numRecordsInCurrentBatch = 0;
   }
 
@@ -169,6 +169,7 @@ public final class UnsafeInMemoryBatchSorter {
     pos ++;
     array.set(pos, keyPrefix);
     pos ++;
+    numRecordsInCurrentBatch ++;
   }
 
   public final class SortedIterator extends UnsafeSorterIterator {

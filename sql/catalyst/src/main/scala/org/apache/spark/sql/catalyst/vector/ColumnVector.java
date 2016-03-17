@@ -303,7 +303,7 @@ public class ColumnVector implements Serializable {
 
       return ByteBuffer
         .allocate(newSize)
-        .order(ByteOrder.nativeOrder())
+        .order(ByteOrder.BIG_ENDIAN)
         .put(orig.array(), 0, pos);
     }
   }
