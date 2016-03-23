@@ -26,12 +26,12 @@ import org.apache.spark.serializer.{DeserializationStream, SerializationStream, 
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.DataType
 
-class RowBatchSerializer(schema: Array[DataType]) extends Serializer with Serializable {
-  override def newInstance(): SerializerInstance = new RowBatchSerializerInstance(schema)
+class DirectRowBatchSerializer(schema: Array[DataType]) extends Serializer with Serializable {
+  override def newInstance(): SerializerInstance = new DirectRowBatchSerializerInstance(schema)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
-private class RowBatchSerializerInstance(schema: Array[DataType]) extends SerializerInstance {
+private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends SerializerInstance {
   /**
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
     * length (stored as a 4-byte integer, written high byte first), followed by the record's bytes.

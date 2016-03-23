@@ -467,6 +467,13 @@ private[spark] object SQLConf {
     doc = "When true, SQL query would execute shuffle in vectorized mode when possible"
   )
 
+  val VECTORIZE_BUFFERED_SHUFFLE_ENABLED =
+    booleanConf("spark.sql.vectorize.bufferedShuffle.enabled",
+      defaultValue = Some(false),
+      isPublic = true,
+      doc = "When true, SQL query would execute shuffle in vectorized buffered mode when possible"
+  )
+
   val VECTORIZE_SORT_ENABLED = booleanConf("spark.sql.vectorize.sort.enabled",
     defaultValue = Some(false),
     isPublic = true,
@@ -599,6 +606,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
 
   private[spark] def vectorizedShuffleEnabled(): Boolean = getConf(VECTORIZE_SHUFFLE_ENABLED)
 
+  private[spark] def vectorizedBufferedShuffleEnabled(): Boolean =
+    getConf(VECTORIZE_BUFFERED_SHUFFLE_ENABLED)
 
   /** ********************** SQLConf functionality methods ************ */
 

@@ -38,7 +38,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -64,7 +65,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val europe =
@@ -98,7 +100,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val cust = customer.filter('c_mktsegment === "BUILDING")
@@ -125,7 +128,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val ord = orders.filter('o_orderdate.between("1993-07-01", "1993-09-30"))
@@ -147,7 +151,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val ord = orders.filter('o_orderdate.between("1994-01-01", "1994-12-31"))
@@ -175,7 +180,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -197,7 +203,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val na = nation.filter('n_name === "FRANCE" || 'n_name === "GERMANY")
@@ -236,7 +243,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val reg = region.filter('r_name === "AMERICA")
@@ -275,7 +283,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -303,7 +312,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li = lineitem.filter('l_returnflag === "R")
@@ -328,7 +338,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val joint =
@@ -356,7 +367,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -383,7 +395,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -405,7 +418,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
@@ -427,7 +441,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val revenue =
@@ -452,7 +467,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val pa = part.filter(
@@ -479,7 +495,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li =
@@ -506,7 +523,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li = lineitem
@@ -532,7 +550,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li = lineitem.filter(
@@ -560,7 +579,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li = lineitem
@@ -590,7 +610,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val li = lineitem.filter('l_receiptdate > 'l_commitdate)
@@ -630,7 +651,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       lazy val cust =
@@ -659,7 +681,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       (SQLConf.VECTORIZE_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_AGG_ENABLED.key -> "true"),
       (SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true"),
-      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true")) {
+      (SQLConf.VECTORIZE_SORT_ENABLED.key -> "true"),
+      (SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true")) {
       import sqlContext.implicits._
 
       val result =
