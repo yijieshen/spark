@@ -17,9 +17,7 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -28,6 +26,8 @@ import java.util.List;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.sql.catalyst.expressions.vector.BatchRead;
+import org.apache.spark.sql.catalyst.expressions.vector.BatchWrite;
 import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.MapData;
 import org.apache.spark.sql.types.*;
@@ -44,6 +44,11 @@ public class RowBatch implements Serializable {
 
   public Integer[] sorted; // array of sorted row indices
   public boolean sortedInUse; // if sorted is valid
+  public int startIdx;
+  public int numRows;
+
+  public BatchWrite writer;
+  public BatchRead reader;
 
   public DataType[] fieldTypes;
   public List<String> colNames;
@@ -72,11 +77,21 @@ public class RowBatch implements Serializable {
     }
   }
 
-  public void clear() {
-    this.size = 0;
-    this.endOfFile = false;
+  public void reset() {
+    reset(true);
+  }
+
+  public void reset(boolean sizeToCapacity) {
+    selectedInUse = false;
+    sortedInUse = false;
+    if (sizeToCapacity) {
+      size = capacity;
+    } else {
+      size = 0;
+    }
+    endOfFile = false;
     for (ColumnVector col : columns) {
-      col.clear();
+      col.reset();
     }
   }
 
@@ -84,6 +99,15 @@ public class RowBatch implements Serializable {
     for (ColumnVector col : columns) {
       col.writeToStream(out);
     }
+  }
+
+  public void appendFromStream(DataInputStream in, int numRows) throws IOException {
+    reader.append(in, this, size, numRows);
+    size += numRows;
+  }
+
+  public void writeToStreamInRange(DataOutputStream out) throws IOException {
+    writer.write(this, out);
   }
 
   public RowBatch(int numCols, int capacity) {
@@ -99,16 +123,6 @@ public class RowBatch implements Serializable {
 
   public RowBatch(int numCols) {
     this(numCols, DEFAULT_SIZE);
-  }
-
-  public void reset() {
-    selectedInUse = false;
-    sortedInUse = false;
-    size = capacity;
-    endOfFile = false;
-    for (ColumnVector col : columns) {
-      col.reset();
-    }
   }
 
   public int[] getSelected() {

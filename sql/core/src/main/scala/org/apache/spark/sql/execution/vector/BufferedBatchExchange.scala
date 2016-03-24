@@ -78,6 +78,7 @@ case class BufferedBatchExchange(
       new SparkSqlSerializer(sparkConf)
     }
   }
+
   override protected def doPrepare(): Unit = {
     // If an ExchangeCoordinator is needed, we register this Exchange operator
     // to the coordinator when we do prepare. It is important to make sure
@@ -104,12 +105,12 @@ case class BufferedBatchExchange(
     val part: Partitioner = newPartitioning match {
       case HashPartitioning(_, n) =>
         new PartitionIdPassthrough(n)
-      case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
+      case _ => sys.error(s"BufferedBatchExchange not implemented for $newPartitioning")
     }
     def getPartitionKeyExtractor(): BatchProjection = newPartitioning match {
       case h: HashPartitioning =>
         BatchProjection.create(h.partitionIdExpression :: Nil, child.output)
-      case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
+      case _ => sys.error(s"BufferedBatchExchange not implemented for $newPartitioning")
     }
 
     def sortRowsByPartition(
@@ -278,7 +279,7 @@ case class BufferedBatchExchange(
       }
     }
     def put(rb: RowBatch): Unit = {
-      rb.clear()
+      rb.reset(false)
       pool.enqueue(rb)
     }
   }

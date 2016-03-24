@@ -69,12 +69,24 @@ public class ColumnVector implements Serializable {
   public int pos;
 
   public ColumnVector(int capacity, DataType dt, boolean ser) {
-    initialState();
+    prepareBuffers(capacity, dt);
     this.dataType = dt;
-    nulls = ByteBuffer.allocate(1024);
-    nulls.order(ByteOrder.BIG_ENDIAN); // DataInputStream & DataOutputStream are big-endian
-    values = ByteBuffer.allocate(capacity * (dt instanceof IntegerType ? 4 : 8));
-    values.order(ByteOrder.BIG_ENDIAN);
+  }
+
+  private void prepareBuffers(int capacity, DataType dt) {
+    initialState();
+    if (nulls == null) {
+      nulls = ByteBuffer.allocate(1024);
+      nulls.order(ByteOrder.BIG_ENDIAN);
+    } else {
+      nulls.clear();
+    }
+    if (values == null) {
+      values = ByteBuffer.allocate(capacity * (dt instanceof IntegerType ? 4 : 8));
+      values.order(ByteOrder.BIG_ENDIAN);
+    } else {
+      values.clear();
+    }
   }
 
   private void initialState() {
@@ -83,10 +95,29 @@ public class ColumnVector implements Serializable {
     this.pos = 0;
   }
 
-  public void clear() {
+  /**
+   * Resets the column to default state
+   *  - fills the isNull array with false
+   *  - sets noNulls to true
+   *  - sets isRepeating to false
+   */
+  public void reset() {
+    if (false == noNulls && isNull != null) {
+      Arrays.fill(isNull, false);
+    }
+    noNulls = true;
+    isRepeating = false;
     initialState();
-    nulls.clear();
-    values.clear();
+    if (nulls != null) {
+      nulls.clear();
+    }
+    if (values != null) {
+      values.clear();
+    }
+    if (bytesVector != null) {
+      Arrays.fill(starts, 0);
+      Arrays.fill(lengths, 0);
+    }
   }
 
   public void writeToStream(DataOutputStream out) throws IOException {
@@ -100,74 +131,103 @@ public class ColumnVector implements Serializable {
     out.write(values.array(), 0, values.limit());
   }
 
-  public void readFromStream(DataInputStream in) throws IOException {
-    reset();
+  public int appendFromNullStream(DataInputStream in, int startIdx, int count) throws IOException {
     int nullCount = in.readInt();
     if (nullCount > 0) {
       this.noNulls = false;
       for (int i = 0; i < nullCount; i ++) {
-        this.isNull[i] = true;
+        int nullPos = in.readInt();
+        this.isNull[nullPos + startIdx] = true;
       }
     }
+    return nullCount;
+  }
+
+  public int appendFromIntStream(DataInputStream in, int startIdx, int count) throws IOException {
     int notNullCount = in.readInt();
+    if (noNulls) {
+      for (int i = 0; i < notNullCount; i ++) {
+        intVector[i + startIdx] = in.readInt();
+      }
+    } else {
+      for (int i = 0; i < nullCount + notNullCount; i ++) {
+        if (!isNull[i + startIdx]) {
+          intVector[i + startIdx] = in.readInt();
+        }
+      }
+    }
+    return notNullCount;
+  }
+
+  public int appendFromLongStream(DataInputStream in, int startIdx, int count) throws IOException {
+    int notNullCount = in.readInt();
+    if (noNulls) {
+      for (int i = 0; i < notNullCount; i ++) {
+        longVector[i + startIdx] = in.readLong();
+      }
+    } else {
+      for (int i = 0; i < nullCount + notNullCount; i ++) {
+        if (!isNull[i + startIdx]) {
+          longVector[i + startIdx] = in.readLong();
+        }
+      }
+    }
+    return notNullCount;
+  }
+
+  public int appendFromDoubleStream(DataInputStream in, int startIdx, int count) throws IOException {
+    int notNullCount = in.readInt();
+    if (noNulls) {
+      for (int i = 0; i < notNullCount; i ++) {
+        doubleVector[i + startIdx] = in.readDouble();
+      }
+    } else {
+      for (int i = 0; i < nullCount + notNullCount; i ++) {
+        if (!isNull[i + startIdx]) {
+          doubleVector[i + startIdx] = in.readDouble();
+        }
+      }
+    }
+    return notNullCount;
+  }
+
+  public int appendFromStringStream(DataInputStream in, int startIdx, int count) throws IOException {
+    int notNullCount = in.readInt();
+    if (noNulls) {
+      for (int i = 0; i < notNullCount; i ++) {
+        int j = i + startIdx;
+        lengths[j] = in.readInt();
+        if (bytesVector[j] == null || bytesVector[j].length < lengths[j]) {
+          bytesVector[j] = new byte[lengths[j]];
+        }
+        in.readFully(bytesVector[j], 0, lengths[j]);
+      }
+    } else {
+      for (int i = 0; i < nullCount + notNullCount; i ++) {
+        int j = i + startIdx;
+        if (!isNull[j]) {
+          lengths[j] = in.readInt();
+          if (bytesVector[j] == null || bytesVector[j].length < lengths[j]) {
+            bytesVector[j] = new byte[lengths[j]];
+          }
+          in.readFully(bytesVector[j], 0, lengths[j]);
+        }
+      }
+    }
+    return notNullCount;
+  }
+
+  public void readFromStream(DataInputStream in) throws IOException {
+    reset();
+    appendFromNullStream(in, 0, -1);
     if (dataType instanceof IntegerType) {
-      if (noNulls) {
-        for (int i = 0; i < notNullCount; i ++) {
-          intVector[i] = in.readInt();
-        }
-      } else {
-        for (int i = 0; i < nullCount + notNullCount; i ++) {
-          if (!isNull[i]) {
-            intVector[i] = in.readInt();
-          }
-        }
-      }
+      appendFromIntStream(in, 0, -1);
     } else if (dataType instanceof LongType) {
-      if (noNulls) {
-        for (int i = 0; i < notNullCount; i ++) {
-          longVector[i] = in.readLong();
-        }
-      } else {
-        for (int i = 0; i < nullCount + notNullCount; i ++) {
-          if (!isNull[i]) {
-            longVector[i] = in.readLong();
-          }
-        }
-      }
+      appendFromLongStream(in, 0, -1);
     } else if (dataType instanceof DoubleType) {
-      if (noNulls) {
-        for (int i = 0; i < notNullCount; i ++) {
-          doubleVector[i] = in.readDouble();
-        }
-      } else {
-        for (int i = 0; i < nullCount + notNullCount; i ++) {
-          if (!isNull[i]) {
-            doubleVector[i] = in.readDouble();
-          }
-        }
-      }
+      appendFromDoubleStream(in, 0, -1);
     } else if (dataType instanceof StringType) {
-      Arrays.fill(starts, 0);
-      Arrays.fill(lengths, 0);
-      if (noNulls) {
-        for (int i = 0; i < notNullCount; i ++) {
-          lengths[i] = in.readInt();
-          if (bytesVector[i] == null || bytesVector[i].length < lengths[i]) {
-            bytesVector[i] = new byte[lengths[i]];
-          }
-          in.readFully(bytesVector[i], 0, lengths[i]);
-        }
-      } else {
-        for (int i = 0; i < nullCount + notNullCount; i ++) {
-          if (!isNull[i]) {
-            lengths[i] = in.readInt();
-            if (bytesVector[i] == null || bytesVector[i].length < lengths[i]) {
-              bytesVector[i] = new byte[lengths[i]];
-            }
-            in.readFully(bytesVector[i], 0, lengths[i]);
-          }
-        }
-      }
+      appendFromStringStream(in, 0, -1);
     } else {
       throw new UnsupportedOperationException(dataType + "is Not supported yet");
     }
@@ -291,7 +351,6 @@ public class ColumnVector implements Serializable {
     buffer.position(pos + src.lengths[i]);
   }
 
-
   private ByteBuffer ensureFreeSpace(ByteBuffer orig, int size) {
     if (orig.remaining() >= size) {
       return orig;
@@ -305,6 +364,67 @@ public class ColumnVector implements Serializable {
         .allocate(newSize)
         .order(ByteOrder.BIG_ENDIAN)
         .put(orig.array(), 0, pos);
+    }
+  }
+
+  public void writeIntCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
+    if (noNulls) {
+      out.writeInt(0);
+      out.writeInt(length);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        out.writeInt(intVector[i]);
+      }
+    } else {
+      prepareBuffers(length, IntegerType$.MODULE$);
+      putIntCV(this, positions, from, length);
+      writeToStream(out);
+    }
+  }
+
+  public void writeLongCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
+    if (noNulls) {
+      out.writeInt(0);
+      out.writeInt(length);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        out.writeLong(longVector[i]);
+      }
+    } else {
+      prepareBuffers(length, LongType$.MODULE$);
+      putLongCV(this, positions, from, length);
+      writeToStream(out);
+    }
+  }
+
+  public void writeDoubleCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
+    if (noNulls) {
+      out.writeInt(0);
+      out.writeInt(length);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        out.writeDouble(doubleVector[i]);
+      }
+    } else {
+      prepareBuffers(length, DoubleType$.MODULE$);
+      putDoubleCV(this, positions, from, length);
+      writeToStream(out);
+    }
+  }
+
+  public void writeStringCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
+    if (noNulls) {
+      out.writeInt(0);
+      out.writeInt(length);
+      for (int j = from; j < from + length; j ++) {
+        int i = positions[j];
+        out.writeInt(lengths[i]);
+        out.write(bytesVector[i], starts[i], lengths[i]);
+      }
+    } else {
+      prepareBuffers(length, StringType$.MODULE$);
+      putStringCV(this, positions, from, length);
+      writeToStream(out);
     }
   }
 
@@ -405,20 +525,6 @@ public class ColumnVector implements Serializable {
     this.bytesVector[elementNum] = sourceBuf;
     this.starts[elementNum] = start;
     this.lengths[elementNum] = length;
-  }
-
-  /**
-   * Resets the column to default state
-   *  - fills the isNull array with false
-   *  - sets noNulls to true
-   *  - sets isRepeating to false
-   */
-  public void reset() {
-    if (false == noNulls) {
-      Arrays.fill(isNull, false);
-    }
-    noNulls = true;
-    isRepeating = false;
   }
 
   public void putNull(int rowId) {

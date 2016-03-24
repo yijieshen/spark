@@ -1,0 +1,153 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.spark.sql.execution.vector
+
+import java.io._
+import java.nio.ByteBuffer
+
+import scala.reflect.ClassTag
+import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
+import org.apache.spark.sql.catalyst.expressions.Attribute
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
+import org.apache.spark.sql.catalyst.vector.RowBatch
+
+class RowBatchSerializer(schema: Seq[Attribute]) extends Serializer with Serializable {
+  override def newInstance(): SerializerInstance = new RowBatchSerializerInstance(schema)
+  override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
+}
+
+private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends SerializerInstance {
+  /**
+    * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
+    * length (stored as a 4-byte integer, written high byte first), followed by the record's bytes.
+    */
+  override def serializeStream(out: OutputStream): SerializationStream = new SerializationStream {
+    private[this] val dOut: DataOutputStream =
+      new DataOutputStream(new BufferedOutputStream(out))
+
+    override def writeValue[T: ClassTag](value: T): SerializationStream = {
+      val rb = value.asInstanceOf[RowBatch]
+
+      dOut.writeInt(rb.numRows)
+      rb.writeToStreamInRange(dOut);
+      this
+    }
+
+    override def writeKey[T: ClassTag](key: T): SerializationStream = {
+      // The key is only needed on the map side when computing partition ids. It does not need to
+      // be shuffled.
+      assert(null == key || key.isInstanceOf[Int])
+      this
+    }
+
+    override def writeAll[T: ClassTag](iter: Iterator[T]): SerializationStream = {
+      // This method is never called by shuffle code.
+      throw new UnsupportedOperationException
+    }
+
+    override def writeObject[T: ClassTag](t: T): SerializationStream = {
+      // This method is never called by shuffle code.
+      throw new UnsupportedOperationException
+    }
+
+    override def flush(): Unit = {
+      dOut.flush()
+    }
+
+    override def close(): Unit = {
+      dOut.close()
+    }
+  }
+
+  override def deserializeStream(in: InputStream): DeserializationStream = {
+    new DeserializationStream {
+      private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
+      private[this] var rowBatch: RowBatch =
+        RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
+      private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
+      private[this] val reader: BatchRead = GenerateBatchRead.generate(schema)
+      rowBatch.reader = reader
+
+      private[this] val EOF: Int = -1
+
+      override def asKeyValueIterator: Iterator[(Int, RowBatch)] = {
+        new Iterator[(Int, RowBatch)] {
+
+          private[this] def readSize(): Int = try {
+            dIn.readInt()
+          } catch {
+            case e: EOFException =>
+              dIn.close()
+              EOF
+          }
+
+          private[this] var nextBatchSize: Int = readSize()
+          override def hasNext: Boolean = nextBatchSize != EOF
+
+          override def next(): (Int, RowBatch) = {
+            rowBatch.reset(false)
+            while (rowBatch.size + nextBatchSize < rowBatch.capacity && nextBatchSize != EOF) {
+              rowBatch.appendFromStream(dIn, nextBatchSize)
+              nextBatchSize = readSize()
+            }
+            if (nextBatchSize == EOF) {
+              dIn.close()
+              val _batchTuple = batchTuple
+              rowBatch = null
+              batchTuple = null
+              _batchTuple
+            } else {
+              batchTuple
+            }
+          }
+        }
+      }
+
+      override def asIterator: Iterator[Any] = {
+        // This method is never called by shuffle code.
+        throw new UnsupportedOperationException
+      }
+
+      override def readKey[T: ClassTag](): T = {
+        // We skipped serialization of the key in writeKey(), so just return a dummy value since
+        // this is going to be discarded anyways.
+        null.asInstanceOf[T]
+      }
+
+      override def readValue[T: ClassTag](): T = {
+        throw new UnsupportedOperationException
+      }
+
+      override def readObject[T: ClassTag](): T = {
+        // This method is never called by shuffle code.
+        throw new UnsupportedOperationException
+      }
+
+      override def close(): Unit = {
+        dIn.close()
+      }
+    }
+  }
+
+  // These methods are never called by shuffle code.
+  override def serialize[T: ClassTag](t: T): ByteBuffer = throw new UnsupportedOperationException
+  override def deserialize[T: ClassTag](bytes: ByteBuffer): T =
+    throw new UnsupportedOperationException
+  override def deserialize[T: ClassTag](bytes: ByteBuffer, loader: ClassLoader): T =
+    throw new UnsupportedOperationException
+}
