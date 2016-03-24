@@ -27,7 +27,7 @@ import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, Genera
 import org.apache.spark.sql.catalyst.plans.physical.{HashPartitioning, Partitioning, RangePartitioning, UnknownPartitioning}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.{ShuffledRowRDD, _}
-import org.apache.spark.util.MutablePair
+import org.apache.spark.util.{MutablePair, NextIterator}
 
 case class BatchExchange(
     var newPartitioning: Partitioning,
@@ -111,7 +111,7 @@ case class BatchExchange(
         partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
       val batchWrite = GenerateBatchWrite.generate(output)
 
-      new Iterator[Product2[Int, RowBatch]] {
+      new NextIterator[Product2[Int, RowBatch]] {
         var currentBatch: RowBatch = null
         var currentPair = new MutablePair[Int, RowBatch]()
 
@@ -123,18 +123,7 @@ case class BatchExchange(
         var currentPartitionKeys: Array[Int] = null
 
         def findNextRange(): Unit = {
-          if (currentBatch == null || currentIdx == currentSize) {
-            currentBatch = iterator.next()
-            currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).intVector
-            currentBatch.sort(currentPartitionKeys)
-
-            currentPID = -1
-            numRows = 0
-            startIdx = -1
-            currentIdx = 0
-            currentSize = currentBatch.size
-          }
-
+          numRows = 0
           var i = currentBatch.sorted(currentIdx)
           currentPID = currentPartitionKeys(i)
           startIdx = currentIdx
@@ -152,16 +141,37 @@ case class BatchExchange(
           currentBatch.numRows = numRows
           currentBatch.writer = batchWrite
           currentPair.update(currentPID, currentBatch)
-          currentPID = -1
-          numRows = 0
         }
 
-        override def hasNext: Boolean = iterator.hasNext || currentIdx < currentSize
+        override protected def getNext(): Product2[Int, RowBatch] = {
+          if (currentBatch != null && startIdx + numRows < currentSize) {
+            findNextRange()
+          } else if (!iterator.hasNext) {
+            finished = true
+          } else {
+            currentBatch = iterator.next()
+            while (currentBatch.size == 0 && iterator.hasNext) {
+              currentBatch = iterator.next()
+            }
+            if (currentBatch.size != 0) {
+              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).intVector
+              currentBatch.sort(currentPartitionKeys)
 
-        override def next(): Product2[Int, RowBatch] = {
-          findNextRange()
+              currentPID = -1
+              numRows = 0
+              startIdx = -1
+              currentIdx = 0
+              currentSize = currentBatch.size
+
+              findNextRange()
+            } else {
+              finished = true
+            }
+          }
           currentPair
         }
+
+        override protected def close(): Unit = {}
       }
     }
 
