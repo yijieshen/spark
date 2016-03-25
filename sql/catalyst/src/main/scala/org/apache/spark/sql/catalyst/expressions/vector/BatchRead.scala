@@ -39,7 +39,7 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
     val schema = in.map(_.dataType)
 
     val columnsRead = schema.zipWithIndex.map { case (dt, idx) =>
-      val specificRead = dt match {
+      dt match {
         case IntegerType =>
           s"rb.columns[$idx].appendFromIntStream(in, startIdx, numRows);"
         case LongType =>
@@ -51,10 +51,6 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
         case _ =>
           "Not implemented yet"
       }
-      s"""
-        rb.columns[$idx].appendFromNullStream(in, startIdx, numRows);
-        $specificRead
-      """
     }.mkString("\n")
 
     val code =

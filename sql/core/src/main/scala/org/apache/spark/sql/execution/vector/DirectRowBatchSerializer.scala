@@ -103,7 +103,7 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
             rowBatch.size = batchSize
             var i = 0
             while (i < schema.length) {
-              rowBatch.columns(i).readFromStream(dIn)
+              rowBatch.columns(i).readFromStream(dIn, batchSize)
               i += 1
             }
             batchSize = readSize()
@@ -141,7 +141,7 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
         rowBatch.size = batchSize
         var i = 0
         while (i < schema.length) {
-          rowBatch.columns(i).readFromStream(dIn)
+          rowBatch.columns(i).readFromStream(dIn, batchSize)
           i += 1
         }
         rowBatch.asInstanceOf[T]

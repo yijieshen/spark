@@ -127,7 +127,6 @@ public class ColumnVector implements Serializable {
       out.write(nulls.array(), 0, nulls.limit());
     }
     values.flip();
-    out.writeInt(notNullCount);
     out.write(values.array(), 0, values.limit());
   }
 
@@ -144,13 +143,14 @@ public class ColumnVector implements Serializable {
   }
 
   public int appendFromIntStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int notNullCount = in.readInt();
+    int nullCount = appendFromNullStream(in, startIdx, count);
+    int notNullCount = count - nullCount;
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
         intVector[i + startIdx] = in.readInt();
       }
     } else {
-      for (int i = 0; i < nullCount + notNullCount; i ++) {
+      for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
           intVector[i + startIdx] = in.readInt();
         }
@@ -160,13 +160,14 @@ public class ColumnVector implements Serializable {
   }
 
   public int appendFromLongStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int notNullCount = in.readInt();
+    int nullCount = appendFromNullStream(in, startIdx, count);
+    int notNullCount = count - nullCount;
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
         longVector[i + startIdx] = in.readLong();
       }
     } else {
-      for (int i = 0; i < nullCount + notNullCount; i ++) {
+      for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
           longVector[i + startIdx] = in.readLong();
         }
@@ -176,13 +177,14 @@ public class ColumnVector implements Serializable {
   }
 
   public int appendFromDoubleStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int notNullCount = in.readInt();
+    int nullCount = appendFromNullStream(in, startIdx, count);
+    int notNullCount = count - nullCount;
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
         doubleVector[i + startIdx] = in.readDouble();
       }
     } else {
-      for (int i = 0; i < nullCount + notNullCount; i ++) {
+      for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
           doubleVector[i + startIdx] = in.readDouble();
         }
@@ -192,7 +194,8 @@ public class ColumnVector implements Serializable {
   }
 
   public int appendFromStringStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int notNullCount = in.readInt();
+    int nullCount = appendFromNullStream(in, startIdx, count);
+    int notNullCount = count - nullCount;
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
         int j = i + startIdx;
@@ -203,7 +206,7 @@ public class ColumnVector implements Serializable {
         in.readFully(bytesVector[j], 0, lengths[j]);
       }
     } else {
-      for (int i = 0; i < nullCount + notNullCount; i ++) {
+      for (int i = 0; i < count; i ++) {
         int j = i + startIdx;
         if (!isNull[j]) {
           lengths[j] = in.readInt();
@@ -217,17 +220,16 @@ public class ColumnVector implements Serializable {
     return notNullCount;
   }
 
-  public void readFromStream(DataInputStream in) throws IOException {
+  public void readFromStream(DataInputStream in, int count) throws IOException {
     reset();
-    appendFromNullStream(in, 0, -1);
     if (dataType instanceof IntegerType) {
-      appendFromIntStream(in, 0, -1);
+      appendFromIntStream(in, 0, count);
     } else if (dataType instanceof LongType) {
-      appendFromLongStream(in, 0, -1);
+      appendFromLongStream(in, 0, count);
     } else if (dataType instanceof DoubleType) {
-      appendFromDoubleStream(in, 0, -1);
+      appendFromDoubleStream(in, 0, count);
     } else if (dataType instanceof StringType) {
-      appendFromStringStream(in, 0, -1);
+      appendFromStringStream(in, 0, count);
     } else {
       throw new UnsupportedOperationException(dataType + "is Not supported yet");
     }
@@ -370,7 +372,6 @@ public class ColumnVector implements Serializable {
   public void writeIntCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
     if (noNulls) {
       out.writeInt(0);
-      out.writeInt(length);
       for (int j = from; j < from + length; j ++) {
         int i = positions[j];
         out.writeInt(intVector[i]);
@@ -385,7 +386,6 @@ public class ColumnVector implements Serializable {
   public void writeLongCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
     if (noNulls) {
       out.writeInt(0);
-      out.writeInt(length);
       for (int j = from; j < from + length; j ++) {
         int i = positions[j];
         out.writeLong(longVector[i]);
@@ -400,7 +400,6 @@ public class ColumnVector implements Serializable {
   public void writeDoubleCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
     if (noNulls) {
       out.writeInt(0);
-      out.writeInt(length);
       for (int j = from; j < from + length; j ++) {
         int i = positions[j];
         out.writeDouble(doubleVector[i]);
@@ -415,7 +414,6 @@ public class ColumnVector implements Serializable {
   public void writeStringCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
     if (noNulls) {
       out.writeInt(0);
-      out.writeInt(length);
       for (int j = from; j < from + length; j ++) {
         int i = positions[j];
         out.writeInt(lengths[i]);
