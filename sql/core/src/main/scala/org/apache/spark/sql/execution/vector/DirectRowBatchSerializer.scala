@@ -44,6 +44,7 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
       val rb = value.asInstanceOf[RowBatch]
 
       dOut.writeInt(rb.size)
+
       rb.writeToStream(dOut);
       this
     }

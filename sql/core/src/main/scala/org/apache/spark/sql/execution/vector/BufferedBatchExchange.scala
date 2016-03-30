@@ -18,17 +18,17 @@
 package org.apache.spark.sql.execution.vector
 
 import scala.collection.mutable
-
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchInsertion}
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchInsertion, GenerateBatchWrite}
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution._
+import org.apache.spark.util.{MutablePair, NextIterator}
 
 case class BufferedBatchExchange(
     var newPartitioning: Partitioning,
@@ -113,7 +113,7 @@ case class BufferedBatchExchange(
       case _ => sys.error(s"BufferedBatchExchange not implemented for $newPartitioning")
     }
 
-    def sortRowsByPartition(
+    def bufferRowsByPartition(
         iterator: Iterator[RowBatch],
         numPartitions: Int,
         partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
@@ -215,14 +215,87 @@ case class BufferedBatchExchange(
         }
       }
     }
+
+    def sortRowsByPartition(iterator: Iterator[RowBatch],
+      numPartitions: Int,
+      partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
+      val batchWrite = GenerateBatchWrite.generate(output)
+
+      new NextIterator[Product2[Int, RowBatch]] {
+        var currentBatch: RowBatch = null
+        var currentPair = new MutablePair[Int, RowBatch]()
+
+        var currentPID: Int = -1
+        var numRows: Int = 0
+        var startIdx: Int = -1
+        var currentIdx: Int = 0
+        var currentSize: Int = -1
+        var currentPartitionKeys: Array[Int] = null
+
+        def findNextRange(): Unit = {
+          numRows = 0
+          var i = currentBatch.sorted(currentIdx)
+          currentPID = currentPartitionKeys(i)
+          startIdx = currentIdx
+          while(currentPartitionKeys(i) == currentPID && currentIdx < currentSize - 1) {
+            numRows += 1
+            currentIdx += 1
+            i = currentBatch.sorted(currentIdx)
+          }
+          if (currentPartitionKeys(i) == currentPID && currentIdx == currentSize - 1) {
+            numRows += 1
+            currentIdx += 1
+          }
+
+          currentBatch.startIdx = startIdx
+          currentBatch.numRows = numRows
+          currentBatch.writer = batchWrite
+          currentPair.update(currentPID, currentBatch)
+        }
+
+        override protected def getNext(): Product2[Int, RowBatch] = {
+          if (currentBatch != null && startIdx + numRows < currentSize) {
+            findNextRange()
+          } else if (!iterator.hasNext) {
+            finished = true
+          } else {
+            currentBatch = iterator.next()
+            while (currentBatch.size == 0 && iterator.hasNext) {
+              currentBatch = iterator.next()
+            }
+            if (currentBatch.size != 0) {
+              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).intVector
+              currentBatch.sort(currentPartitionKeys)
+
+              currentPID = -1
+              numRows = 0
+              startIdx = -1
+              currentIdx = 0
+              currentSize = currentBatch.size
+
+              findNextRange()
+            } else {
+              finished = true
+            }
+          }
+          currentPair
+        }
+
+        override protected def close(): Unit = {}
+      }
+    }
+
     val rddWithPartitionCV: RDD[Product2[Int, RowBatch]] = {
-      if (part.numPartitions <= bypassThreshold) {
+      if (part.numPartitions <= bypassThreshold) { // bypass version
+        rdd.mapPartitions { iter =>
+          val getPartitionKey = getPartitionKeyExtractor()
+          bufferRowsByPartition(iter, part.numPartitions, getPartitionKey)
+        }
+      } else { // sort version
         rdd.mapPartitions { iter =>
           val getPartitionKey = getPartitionKeyExtractor()
           sortRowsByPartition(iter, part.numPartitions, getPartitionKey)
         }
-      } else {
-        sqlContext.sparkContext.emptyRDD
       }
     }
 

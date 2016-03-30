@@ -21,6 +21,7 @@ import java.io._
 import java.nio.ByteBuffer
 
 import scala.reflect.ClassTag
+
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
@@ -44,7 +45,7 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
       val rb = value.asInstanceOf[RowBatch]
 
       dOut.writeInt(rb.numRows)
-      rb.writeToStreamInRange(dOut);
+      rb.writeToStreamInRange(dOut)
       this
     }
 
