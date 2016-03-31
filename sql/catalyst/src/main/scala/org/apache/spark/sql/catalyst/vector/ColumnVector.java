@@ -17,12 +17,12 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
@@ -68,6 +68,8 @@ public class ColumnVector implements Serializable {
   public int notNullCount;
   public int pos;
 
+  public ByteBuffer fourByte = ByteBuffer.allocate(4).order(ByteOrder.nativeOrder());
+
   public ColumnVector(int capacity, DataType dt, boolean ser) {
     prepareBuffers(capacity, dt);
     this.dataType = dt;
@@ -77,13 +79,13 @@ public class ColumnVector implements Serializable {
     initialState();
     if (nulls == null) {
       nulls = ByteBuffer.allocate(1024);
-      nulls.order(ByteOrder.BIG_ENDIAN);
+      nulls.order(ByteOrder.nativeOrder());
     } else {
       nulls.clear();
     }
     if (values == null) {
       values = ByteBuffer.allocate(capacity * (dt instanceof IntegerType ? 4 : 8));
-      values.order(ByteOrder.BIG_ENDIAN);
+      values.order(ByteOrder.nativeOrder());
     } else {
       values.clear();
     }
@@ -120,119 +122,132 @@ public class ColumnVector implements Serializable {
     }
   }
 
-  public void writeToStream(DataOutputStream out) throws IOException {
-    out.writeInt(nullCount);
-    if (nullCount > 0) {
-      nulls.flip();
-      out.write(nulls.array(), 0, nulls.limit());
-    }
-    values.flip();
-    out.write(values.array(), 0, values.limit());
+  private void writeInt(int i, WritableByteChannel out) throws IOException {
+    fourByte.clear();
+    fourByte.putInt(i);
+    fourByte.flip();
+    out.write(fourByte);
   }
 
-  public int appendFromNullStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int nullCount = in.readInt();
+  private int readInt(ReadableByteChannel in) throws IOException {
+    fourByte.clear();
+    in.read(fourByte);
+    return fourByte.getInt(0);
+  }
+
+  public void writeToStream(WritableByteChannel out) throws IOException {
+    writeInt(nullCount, out);
     if (nullCount > 0) {
+      nulls.flip();
+      out.write(nulls);
+    }
+    values.flip();
+    writeInt(values.limit(), out);
+    out.write(values);
+  }
+
+  /* return notNullCount
+   */
+  private int appendFromCtrlStream(
+      ReadableByteChannel in, int startIdx, int count, DataType type) throws IOException {
+    prepareBuffers(RowBatch.DEFAULT_SIZE, type);
+    int nullCount = readInt(in);
+    if (nullCount > 0) {
+      nulls = ensureFreeSpace(nulls, nullCount * 4);
+      nulls.limit(nullCount * 4);
+      in.read(nulls);
+      nulls.flip();
       this.noNulls = false;
       for (int i = 0; i < nullCount; i ++) {
-        int nullPos = in.readInt();
+        int nullPos = nulls.getInt();
         this.isNull[nullPos + startIdx] = true;
       }
     }
-    return nullCount;
+    int notNullCount = count - nullCount;
+    int valueSize = readInt(in);
+    values = ensureFreeSpace(values, valueSize);
+    values.limit(valueSize);
+    in.read(values);
+    values.flip();
+    return notNullCount;
   }
 
-  public int appendFromIntStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int nullCount = appendFromNullStream(in, startIdx, count);
-    int notNullCount = count - nullCount;
+  public int appendFromIntStream(
+      ReadableByteChannel in, int startIdx, int count) throws IOException {
+    int notNullCount = appendFromCtrlStream(in, startIdx, count, IntegerType$.MODULE$);
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
-        intVector[i + startIdx] = in.readInt();
+        intVector[i + startIdx] = values.getInt();
       }
     } else {
       for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
-          intVector[i + startIdx] = in.readInt();
+          intVector[i + startIdx] = values.getInt();
         }
       }
     }
     return notNullCount;
   }
 
-  public int appendFromLongStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int nullCount = appendFromNullStream(in, startIdx, count);
-    int notNullCount = count - nullCount;
+  public int appendFromLongStream(
+      ReadableByteChannel in, int startIdx, int count) throws IOException {
+    int notNullCount = appendFromCtrlStream(in, startIdx, count, LongType$.MODULE$);
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
-        longVector[i + startIdx] = in.readLong();
+        longVector[i + startIdx] = values.getLong();
       }
     } else {
       for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
-          longVector[i + startIdx] = in.readLong();
+          longVector[i + startIdx] = values.getLong();
         }
       }
     }
     return notNullCount;
   }
 
-  public int appendFromDoubleStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int nullCount = appendFromNullStream(in, startIdx, count);
-    int notNullCount = count - nullCount;
+  public int appendFromDoubleStream(
+      ReadableByteChannel in, int startIdx, int count) throws IOException {
+    int notNullCount = appendFromCtrlStream(in, startIdx, count, DoubleType$.MODULE$);
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
-        doubleVector[i + startIdx] = in.readDouble();
+        doubleVector[i + startIdx] = values.getDouble();
       }
     } else {
       for (int i = 0; i < count; i ++) {
         if (!isNull[i + startIdx]) {
-          doubleVector[i + startIdx] = in.readDouble();
+          doubleVector[i + startIdx] = values.getDouble();
         }
       }
     }
     return notNullCount;
   }
 
-  public int appendFromStringStream(DataInputStream in, int startIdx, int count) throws IOException {
-    int nullCount = appendFromNullStream(in, startIdx, count);
-    int notNullCount = count - nullCount;
+  public int appendFromStringStream(
+      ReadableByteChannel in, int startIdx, int count) throws IOException {
+    int notNullCount = appendFromCtrlStream(in, startIdx, count, StringType$.MODULE$);
     if (noNulls) {
       for (int i = 0; i < notNullCount; i ++) {
         int j = i + startIdx;
-        lengths[j] = in.readInt();
+        lengths[j] = values.getInt();
         if (bytesVector[j] == null || bytesVector[j].length < lengths[j]) {
           bytesVector[j] = new byte[lengths[j]];
         }
-        in.readFully(bytesVector[j], 0, lengths[j]);
+        values.get(bytesVector[j], 0, lengths[j]);
       }
     } else {
       for (int i = 0; i < count; i ++) {
         int j = i + startIdx;
         if (!isNull[j]) {
-          lengths[j] = in.readInt();
+          lengths[j] = values.getInt();
           if (bytesVector[j] == null || bytesVector[j].length < lengths[j]) {
             bytesVector[j] = new byte[lengths[j]];
           }
-          in.readFully(bytesVector[j], 0, lengths[j]);
+          values.get(bytesVector[j], 0, lengths[j]);
         }
       }
     }
     return notNullCount;
-  }
-
-  public void readFromStream(DataInputStream in, int count) throws IOException {
-    reset();
-    if (dataType instanceof IntegerType) {
-      appendFromIntStream(in, 0, count);
-    } else if (dataType instanceof LongType) {
-      appendFromLongStream(in, 0, count);
-    } else if (dataType instanceof DoubleType) {
-      appendFromDoubleStream(in, 0, count);
-    } else if (dataType instanceof StringType) {
-      appendFromStringStream(in, 0, count);
-    } else {
-      throw new UnsupportedOperationException(dataType + "is Not supported yet");
-    }
   }
 
   public void putIntCV(ColumnVector src, Integer[] positions, int from, int length) {
@@ -364,66 +379,37 @@ public class ColumnVector implements Serializable {
 
       return ByteBuffer
         .allocate(newSize)
-        .order(ByteOrder.BIG_ENDIAN)
+        .order(ByteOrder.nativeOrder())
         .put(orig.array(), 0, pos);
     }
   }
 
-  public void writeIntCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
-    if (noNulls) {
-      out.writeInt(0);
-      for (int j = from; j < from + length; j ++) {
-        int i = positions[j];
-        out.writeInt(intVector[i]);
-      }
-    } else {
-      prepareBuffers(length, IntegerType$.MODULE$);
-      putIntCV(this, positions, from, length);
-      writeToStream(out);
-    }
+  public void writeIntCVToStream(
+      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+    prepareBuffers(length, IntegerType$.MODULE$);
+    putIntCV(this, positions, from, length);
+    writeToStream(out);
   }
 
-  public void writeLongCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
-    if (noNulls) {
-      out.writeInt(0);
-      for (int j = from; j < from + length; j ++) {
-        int i = positions[j];
-        out.writeLong(longVector[i]);
-      }
-    } else {
-      prepareBuffers(length, LongType$.MODULE$);
-      putLongCV(this, positions, from, length);
-      writeToStream(out);
-    }
+  public void writeLongCVToStream(
+      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+    prepareBuffers(length, LongType$.MODULE$);
+    putLongCV(this, positions, from, length);
+    writeToStream(out);
   }
 
-  public void writeDoubleCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
-    if (noNulls) {
-      out.writeInt(0);
-      for (int j = from; j < from + length; j ++) {
-        int i = positions[j];
-        out.writeDouble(doubleVector[i]);
-      }
-    } else {
-      prepareBuffers(length, DoubleType$.MODULE$);
-      putDoubleCV(this, positions, from, length);
-      writeToStream(out);
-    }
+  public void writeDoubleCVToStream(
+      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+    prepareBuffers(length, DoubleType$.MODULE$);
+    putDoubleCV(this, positions, from, length);
+    writeToStream(out);
   }
 
-  public void writeStringCVToStream(DataOutputStream out, Integer[] positions, int from, int length) throws IOException {
-    if (noNulls) {
-      out.writeInt(0);
-      for (int j = from; j < from + length; j ++) {
-        int i = positions[j];
-        out.writeInt(lengths[i]);
-        out.write(bytesVector[i], starts[i], lengths[i]);
-      }
-    } else {
-      prepareBuffers(length, StringType$.MODULE$);
-      putStringCV(this, positions, from, length);
-      writeToStream(out);
-    }
+  public void writeStringCVToStream(
+      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+    prepareBuffers(length, StringType$.MODULE$);
+    putStringCV(this, positions, from, length);
+    writeToStream(out);
   }
 
   private ColumnVector(int capacity) {

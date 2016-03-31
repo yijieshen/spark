@@ -40,7 +40,8 @@ private[spark] class HashShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def registerShuffle[K, V, C](
       shuffleId: Int,
       numMaps: Int,
-      dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
+      dependency: ShuffleDependency[K, V, C],
+      rowBatchMode: Boolean): ShuffleHandle = {
     new BaseShuffleHandle(shuffleId, numMaps, dependency)
   }
 

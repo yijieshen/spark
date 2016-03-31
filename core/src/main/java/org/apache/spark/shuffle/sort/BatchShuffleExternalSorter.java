@@ -20,6 +20,8 @@ package org.apache.spark.shuffle.sort;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.LinkedList;
 
@@ -94,8 +96,15 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
   private final int[] rowsSoFar = new int[ROW_BATCH_CAPACITY];
   private final Object[] pages = new Object[ROW_BATCH_CAPACITY];
   private final long[] offsets = new long[ROW_BATCH_CAPACITY];
-  private final int[] nullCounts = new int[ROW_BATCH_CAPACITY];
   private final int[] lengths = new int[ROW_BATCH_CAPACITY];
+
+  // Small writes to DiskBlockObjectWriter will be fairly inefficient. Since there doesn't seem to
+  // be an API to directly transfer bytes from managed memory to the disk writer, we buffer
+  // data through a byte array. This array does not need to be large enough to hold a single
+  // record;
+  private final byte[] writeBuffer = new byte[DISK_WRITE_BUFFER_SIZE];
+
+  private final ByteBuffer buffer = ByteBuffer.allocate(ROW_BATCH_CAPACITY * 4 + 40);
 
   /** Peak memory used by this sorter so far, in bytes. **/
   private long peakMemoryUsedBytes;
@@ -126,6 +135,7 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
     this.writeMetrics = writeMetrics;
     this.inMemSorter = new ShuffleInMemorySorter(this, initialSize);
     this.peakMemoryUsedBytes = getMemoryUsage();
+    this.buffer.order(ByteOrder.nativeOrder());
   }
 
   /**
@@ -189,7 +199,6 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
         if (currentPartition != -1) {
           // output the buffered batches
           writeBufferedBatch(writer, numBatches, currentRowCount, numColumns);
-
           writer.commitAndClose();
           spillInfo.partitionLengths[currentPartition] = writer.fileSegment().length();
         }
@@ -212,11 +221,9 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
       if (numRows + currentRowCount > ROW_BATCH_CAPACITY) {
         // output the buffered batches
         writeBufferedBatch(writer, numBatches, currentRowCount, numColumns);
-
         numBatches = 0;
         currentRowCount = 0;
       }
-
 
       rowsSoFar[numBatches] = currentRowCount;
       currentRowCount += numRows;
@@ -265,33 +272,25 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
       int currentRowCount,
       int numColumns) {
 
-    // Small writes to DiskBlockObjectWriter will be fairly inefficient. Since there doesn't seem to
-    // be an API to directly transfer bytes from managed memory to the disk writer, we buffer
-    // data through a byte array. This array does not need to be large enough to hold a single
-    // record;
-    final byte[] writeBuffer = new byte[DISK_WRITE_BUFFER_SIZE];
-
     writer.writeIntBE(currentRowCount);
     writer.writeIntBE(numColumns);
     // handle columns one by one
     for (int i = 0; i < numColumns; i ++) {
+      buffer.clear();
 
       // read null counts
       int nullsInColumn = 0;
       for (int j = 0; j < numBatches; j ++) {
-        nullCounts[j] = Platform.getInt(pages[j], offsets[j]);
-        nullsInColumn += nullCounts[j];
+        buffer.position(4);
+        int currentNullCount = Platform.getInt(pages[j], offsets[j]);
         offsets[j] += 4;
-      }
-      writer.writeIntLE(nullsInColumn);
-      if (nullsInColumn > 0) {
-        for (int j = 0; j < numBatches; j ++) {
-          for (int k = 0; k < nullCounts[j]; k ++) {
-            writer.writeIntLE(rowsSoFar[j] + Platform.getInt(pages[j], offsets[j]));
-            offsets[j] += 4;
-          }
+        for (int k = 0; k < currentNullCount; k ++) {
+          buffer.putInt(rowsSoFar[j] + Platform.getInt(pages[j], offsets[j]));
+          offsets[j] += 4;
         }
+        nullsInColumn += currentNullCount;
       }
+      buffer.putInt(0, nullsInColumn);
 
       int totalLength = 0;
       for (int j = 0; j < numBatches; j ++) {
@@ -299,7 +298,11 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
         totalLength += lengths[j];
         offsets[j] += 4;
       }
-      writer.writeIntLE(totalLength);
+      buffer.putInt(totalLength);
+
+      buffer.flip();
+      writer.write(buffer.array(), 0, buffer.limit());
+
       for (int j = 0; j < numBatches; j ++) {
         int dataRemaining = lengths[j];
         long recordReadPosition = offsets[j];

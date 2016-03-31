@@ -17,7 +17,8 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import java.io.{DataInputStream, IOException}
+import java.io.IOException
+import java.nio.channels.ReadableByteChannel
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator
@@ -26,7 +27,7 @@ import org.apache.spark.sql.types._
 
 abstract class BatchRead {
   @throws(classOf[IOException])
-  def append(in: DataInputStream, rb: RowBatch, startIdx: Int, numRows: Int): Unit
+  def append(in: ReadableByteChannel, rb: RowBatch, startIdx: Int, numRows: Int): Unit
 }
 
 object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
@@ -69,7 +70,7 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
           ${initMutableStates(ctx)}
         }
 
-        public void append(java.io.DataInputStream in, RowBatch rb, int startIdx, int numRows) throws java.io.IOException{
+        public void append(java.nio.channels.ReadableByteChannel in, RowBatch rb, int startIdx, int numRows) throws java.io.IOException{
           $columnsRead
         }
       }

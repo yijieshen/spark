@@ -84,7 +84,7 @@ public class BatchShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       BlockManager blockManager,
       IndexShuffleBlockResolver shuffleBlockResolver,
       TaskMemoryManager memoryManager,
-      SerializedShuffleHandle<K, V> handle,
+      BatchShuffleHandle<K, V> handle,
       int mapId,
       TaskContext taskContext,
       SparkConf sparkConf) throws IOException {

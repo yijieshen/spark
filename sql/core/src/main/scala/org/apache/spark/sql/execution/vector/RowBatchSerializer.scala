@@ -19,9 +19,9 @@ package org.apache.spark.sql.execution.vector
 
 import java.io._
 import java.nio.ByteBuffer
+import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 
 import scala.reflect.ClassTag
-
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
@@ -40,12 +40,14 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
   override def serializeStream(out: OutputStream): SerializationStream = new SerializationStream {
     private[this] val dOut: DataOutputStream =
       new DataOutputStream(new BufferedOutputStream(out))
+    private[this] val wbc: WritableByteChannel = Channels.newChannel(out)
 
     override def writeValue[T: ClassTag](value: T): SerializationStream = {
       val rb = value.asInstanceOf[RowBatch]
 
       dOut.writeInt(rb.numRows)
-      rb.writeToStreamInRange(dOut)
+      dOut.writeInt(schema.size)
+      rb.writeToStreamInRange(wbc)
       this
     }
 
@@ -78,6 +80,7 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
   override def deserializeStream(in: InputStream): DeserializationStream = {
     new DeserializationStream {
       private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
+      private[this] val rbc: ReadableByteChannel = Channels.newChannel(in)
       private[this] var rowBatch: RowBatch =
         RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
       private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
@@ -103,7 +106,8 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
           override def next(): (Int, RowBatch) = {
             rowBatch.reset(false)
             while (rowBatch.size + nextBatchSize < rowBatch.capacity && nextBatchSize != EOF) {
-              rowBatch.appendFromStream(dIn, nextBatchSize)
+              readSize()
+              rowBatch.appendFromStream(rbc, nextBatchSize)
               nextBatchSize = readSize()
             }
             if (nextBatchSize == EOF) {

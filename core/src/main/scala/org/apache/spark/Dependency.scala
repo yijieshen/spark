@@ -73,7 +73,8 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val serializer: Option[Serializer] = None,
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
-    val mapSideCombine: Boolean = false)
+    val mapSideCombine: Boolean = false,
+    val rowBatchMode: Boolean = false)
   extends Dependency[Product2[K, V]] {
 
   override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
@@ -88,7 +89,7 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
   val shuffleId: Int = _rdd.context.newShuffleId()
 
   val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
-    shuffleId, _rdd.partitions.size, this)
+    shuffleId, _rdd.partitions.size, this, rowBatchMode)
 
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
 }

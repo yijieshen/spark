@@ -19,19 +19,21 @@ package org.apache.spark.sql.execution.vector
 
 import java.io._
 import java.nio.ByteBuffer
+import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 
 import scala.reflect.ClassTag
-
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
+import org.apache.spark.sql.catalyst.expressions.Attribute
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.DataType
 
-class DirectRowBatchSerializer(schema: Array[DataType]) extends Serializer with Serializable {
+class DirectRowBatchSerializer(schema: Seq[Attribute]) extends Serializer with Serializable {
   override def newInstance(): SerializerInstance = new DirectRowBatchSerializerInstance(schema)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
-private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends SerializerInstance {
+private class DirectRowBatchSerializerInstance(schema: Seq[Attribute]) extends SerializerInstance {
   /**
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
     * length (stored as a 4-byte integer, written high byte first), followed by the record's bytes.
@@ -39,13 +41,20 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
   override def serializeStream(out: OutputStream): SerializationStream = new SerializationStream {
     private[this] val dOut: DataOutputStream =
       new DataOutputStream(new BufferedOutputStream(out))
+    private[this] val wbc: WritableByteChannel = Channels.newChannel(dOut)
 
     override def writeValue[T: ClassTag](value: T): SerializationStream = {
       val rb = value.asInstanceOf[RowBatch]
 
-      dOut.writeInt(rb.size)
-
-      rb.writeToStream(dOut);
+      if (rb.writer != null) {
+        dOut.writeInt(rb.numRows)
+        dOut.writeInt(schema.size)
+        rb.writeToStreamInRange(wbc)
+      } else {
+        dOut.writeInt(rb.size)
+        dOut.writeInt(schema.size)
+        rb.writeToStream(wbc)
+      }
       this
     }
 
@@ -72,14 +81,19 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
 
     override def close(): Unit = {
       dOut.close()
+      wbc.close()
     }
   }
 
   override def deserializeStream(in: InputStream): DeserializationStream = {
     new DeserializationStream {
       private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
-      private[this] var rowBatch: RowBatch = RowBatch.create(schema, RowBatch.DEFAULT_SIZE)
+      private[this] var rowBatch: RowBatch =
+        RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
       private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
+      private[this] val reader: BatchRead = GenerateBatchRead.generate(schema)
+      private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
+      rowBatch.reader = reader
 
       private[this] val EOF: Int = -1
 
@@ -99,14 +113,12 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
 
           override def next(): (Int, RowBatch) = {
             if (rowBatch.capacity < batchSize) {
-              rowBatch = RowBatch.create(schema, batchSize)
+              rowBatch = RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
+              rowBatch.reader = reader
             }
-            rowBatch.size = batchSize
-            var i = 0
-            while (i < schema.length) {
-              rowBatch.columns(i).readFromStream(dIn, batchSize)
-              i += 1
-            }
+            rowBatch.reset(false)
+            readSize() // read column num
+            rowBatch.appendFromStream(rbc, batchSize)
             batchSize = readSize()
             if (batchSize == EOF) { // We are returning the last row in this stream
               dIn.close()
@@ -135,17 +147,7 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
       }
 
       override def readValue[T: ClassTag](): T = {
-        val batchSize = dIn.readInt()
-        if (rowBatch.capacity < batchSize) {
-          rowBatch = RowBatch.create(schema, batchSize)
-        }
-        rowBatch.size = batchSize
-        var i = 0
-        while (i < schema.length) {
-          rowBatch.columns(i).readFromStream(dIn, batchSize)
-          i += 1
-        }
-        rowBatch.asInstanceOf[T]
+        throw new UnsupportedOperationException
       }
 
       override def readObject[T: ClassTag](): T = {
@@ -155,6 +157,7 @@ private class DirectRowBatchSerializerInstance(schema: Array[DataType]) extends 
 
       override def close(): Unit = {
         dIn.close()
+        rbc.close()
       }
     }
   }

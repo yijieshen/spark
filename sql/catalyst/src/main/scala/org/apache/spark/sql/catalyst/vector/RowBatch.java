@@ -18,6 +18,8 @@
 package org.apache.spark.sql.catalyst.vector;
 
 import java.io.*;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -95,18 +97,18 @@ public class RowBatch implements Serializable {
     }
   }
 
-  public void writeToStream(DataOutputStream out) throws IOException {
+  public void writeToStream(WritableByteChannel out) throws IOException {
     for (ColumnVector col : columns) {
       col.writeToStream(out);
     }
   }
 
-  public void appendFromStream(DataInputStream in, int numRows) throws IOException {
+  public void appendFromStream(ReadableByteChannel in, int numRows) throws IOException {
     reader.append(in, this, size, numRows);
     size += numRows;
   }
 
-  public void writeToStreamInRange(DataOutputStream out) throws IOException {
+  public void writeToStreamInRange(WritableByteChannel out) throws IOException {
     writer.write(this, out);
   }
 

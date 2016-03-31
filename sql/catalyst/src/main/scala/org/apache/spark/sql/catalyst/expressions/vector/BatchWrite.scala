@@ -17,7 +17,8 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
-import java.io.{DataOutputStream, IOException}
+import java.io.IOException
+import java.nio.channels.WritableByteChannel
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator
@@ -26,7 +27,7 @@ import org.apache.spark.sql.types._
 
 abstract class BatchWrite {
   @throws(classOf[IOException])
-  def write(rb: RowBatch, out: DataOutputStream): Unit
+  def write(rb: RowBatch, out: WritableByteChannel): Unit
 }
 
 object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
@@ -69,7 +70,7 @@ object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
           ${initMutableStates(ctx)}
         }
 
-        public void write(RowBatch rb, java.io.DataOutputStream out) throws java.io.IOException {
+        public void write(RowBatch rb, java.nio.channels.WritableByteChannel out) throws java.io.IOException {
           $columnsWrite
         }
       }

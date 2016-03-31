@@ -73,7 +73,7 @@ case class BufferedBatchExchange(
 
   private val serializer: Serializer = {
     if (tungstenMode) {
-      new DirectRowBatchSerializer(rbSchema)
+      new DirectRowBatchSerializer(output)
     } else {
       new SparkSqlSerializer(sparkConf)
     }
@@ -303,7 +303,8 @@ case class BufferedBatchExchange(
       new ShuffleDependency[Int, RowBatch, RowBatch](
         rddWithPartitionCV,
         part,
-        Some(serializer))
+        Some(serializer),
+        rowBatchMode = true)
 
     dependency
   }

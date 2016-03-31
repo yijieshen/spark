@@ -89,7 +89,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def registerShuffle[K, V, C](
       shuffleId: Int,
       numMaps: Int,
-      dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
+      dependency: ShuffleDependency[K, V, C],
+      rowBatchMode: Boolean): ShuffleHandle = {
     if (SortShuffleWriter.shouldBypassMergeSort(SparkEnv.get.conf, dependency)) {
       // If there are fewer than spark.shuffle.sort.bypassMergeThreshold partitions and we don't
       // need map-side aggregation, then write numPartitions files directly and just concatenate
@@ -97,6 +98,10 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // together the spilled files, which would happen with the normal code path. The downside is
       // having multiple files open at a time and thus more memory allocated to buffers.
       new BypassMergeSortShuffleHandle[K, V](
+        shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
+    } else if (SortShuffleManager.canUseSerializedShuffle(dependency) && rowBatchMode) {
+      // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
+      new BatchShuffleHandle[K, V](
         shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
     } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) {
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
@@ -136,6 +141,15 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           shuffleBlockResolver.asInstanceOf[IndexShuffleBlockResolver],
           context.taskMemoryManager(),
           unsafeShuffleHandle,
+          mapId,
+          context,
+          env.conf)
+      case batchShuffleHandle: BatchShuffleHandle[K @unchecked, V @unchecked] =>
+        new BatchShuffleWriter(
+          env.blockManager,
+          shuffleBlockResolver.asInstanceOf[IndexShuffleBlockResolver],
+          context.taskMemoryManager(),
+          batchShuffleHandle,
           mapId,
           context,
           env.conf)
@@ -211,6 +225,17 @@ private[spark] object SortShuffleManager extends Logging {
  * serialized shuffle.
  */
 private[spark] class SerializedShuffleHandle[K, V](
+  shuffleId: Int,
+  numMaps: Int,
+  dependency: ShuffleDependency[K, V, V])
+  extends BaseShuffleHandle(shuffleId, numMaps, dependency) {
+}
+
+/**
+  * Subclass of [[BaseShuffleHandle]], used to identify when we've chosen to use the
+  * serialized shuffle.
+  */
+private[spark] class BatchShuffleHandle[K, V](
   shuffleId: Int,
   numMaps: Int,
   dependency: ShuffleDependency[K, V, V])
