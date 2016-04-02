@@ -233,6 +233,7 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
     }
 
     if (writer != null) {
+      writeBufferedBatch(writer, numBatches, currentRowCount, numColumns);
       writer.commitAndClose();
       // If `writeSortedFile()` was called from `closeAndGetSpills()` and no records were inserted,
       // then the file might be empty. Note that it might be better to avoid calling
@@ -486,7 +487,9 @@ public class BatchShuffleExternalSorter extends MemoryConsumer {
   }
 
   private int readIntFromPage(Object base, long offset) {
-    return (Platform.getByte(base, offset) << 24) + (Platform.getByte(base, offset + 1) << 16) +
-      (Platform.getByte(base, offset + 2) << 8) + (Platform.getByte(base, offset + 3) << 0);
+    return ((Platform.getByte(base, offset) & 0xff) << 24) +
+      ((Platform.getByte(base, offset + 1) & 0xff) << 16) +
+      ((Platform.getByte(base, offset + 2) & 0xff) << 8) +
+      ((Platform.getByte(base, offset + 3) & 0xff) << 0);
   }
 }

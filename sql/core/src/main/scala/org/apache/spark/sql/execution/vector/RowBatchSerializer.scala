@@ -40,7 +40,7 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
   override def serializeStream(out: OutputStream): SerializationStream = new SerializationStream {
     private[this] val dOut: DataOutputStream =
       new DataOutputStream(new BufferedOutputStream(out))
-    private[this] val wbc: WritableByteChannel = Channels.newChannel(out)
+    private[this] val wbc: WritableByteChannel = Channels.newChannel(dOut)
 
     override def writeValue[T: ClassTag](value: T): SerializationStream = {
       val rb = value.asInstanceOf[RowBatch]
@@ -74,13 +74,14 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
 
     override def close(): Unit = {
       dOut.close()
+      wbc.close()
     }
   }
 
   override def deserializeStream(in: InputStream): DeserializationStream = {
     new DeserializationStream {
       private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
-      private[this] val rbc: ReadableByteChannel = Channels.newChannel(in)
+      private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
       private[this] var rowBatch: RowBatch =
         RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
       private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
@@ -105,7 +106,7 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
 
           override def next(): (Int, RowBatch) = {
             rowBatch.reset(false)
-            while (rowBatch.size + nextBatchSize < rowBatch.capacity && nextBatchSize != EOF) {
+            while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
               readSize()
               rowBatch.appendFromStream(rbc, nextBatchSize)
               nextBatchSize = readSize()
@@ -145,6 +146,7 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
 
       override def close(): Unit = {
         dIn.close()
+        rbc.close()
       }
     }
   }

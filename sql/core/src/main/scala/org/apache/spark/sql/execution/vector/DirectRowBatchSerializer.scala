@@ -117,9 +117,11 @@ private class DirectRowBatchSerializerInstance(schema: Seq[Attribute]) extends S
               rowBatch.reader = reader
             }
             rowBatch.reset(false)
-            readSize() // read column num
-            rowBatch.appendFromStream(rbc, batchSize)
-            batchSize = readSize()
+            while (rowBatch.size + batchSize <= rowBatch.capacity && batchSize != EOF) {
+              readSize() // read column num
+              rowBatch.appendFromStream(rbc, batchSize)
+              batchSize = readSize()
+            }
             if (batchSize == EOF) { // We are returning the last row in this stream
               dIn.close()
               val _batchTuple = batchTuple

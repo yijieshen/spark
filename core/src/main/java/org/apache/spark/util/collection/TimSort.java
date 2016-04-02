@@ -176,34 +176,44 @@ class TimSort<K, Buffer> {
     assert starts.length == lengths.length;
     assert starts[starts.length - 1] + lengths[lengths.length - 1] == hi;
 
-    int nRemaining  = hi - lo;
-    if (nRemaining < 2)
-      return;  // Arrays of size 0 and 1 are always sorted
-
-    // If array is small, do a "mini-TimSort" with no merges
-    if (nRemaining < MIN_MERGE) {
-      int initRunLen = countRunAndMakeAscending(a, lo, hi, c);
-      binarySort(a, lo, hi, lo + initRunLen, c);
-      return;
+    int total = 0;
+    for (int i = 0 ; i < lengths.length; i ++) {
+      total += lengths[i];
     }
 
-    /**
-     * March over the array once, left to right, finding natural runs,
-     * extending short natural runs to minRun elements, and merging runs
-     * to maintain stack invariant.
-     */
-    SortState sortState = new SortState(a, c, hi - lo);
+    if (total / lengths.length >= MIN_MERGE) {
 
-    // Push all runs onto pending-run stack one by one, and maybe merge
-    // this differs from the original sort for no need to identify runs
-    for (int i = 0; i < starts.length; i ++) {
-      sortState.pushRun(starts[i], lengths[i]);
-      sortState.mergeCollapse();
+      int nRemaining  = hi - lo;
+      if (nRemaining < 2)
+        return;  // Arrays of size 0 and 1 are always sorted
+
+      // If array is small, do a "mini-TimSort" with no merges
+      if (nRemaining < MIN_MERGE) {
+        int initRunLen = countRunAndMakeAscending(a, lo, hi, c);
+        binarySort(a, lo, hi, lo + initRunLen, c);
+        return;
+      }
+
+      /**
+       * March over the array once, left to right, finding natural runs,
+       * extending short natural runs to minRun elements, and merging runs
+       * to maintain stack invariant.
+       */
+      SortState sortState = new SortState(a, c, hi - lo);
+
+      // Push all runs onto pending-run stack one by one, and maybe merge
+      // this differs from the original sort for no need to identify runs
+      for (int i = 0; i < starts.length; i ++) {
+        sortState.pushRun(starts[i], lengths[i]);
+        sortState.mergeCollapse();
+      }
+
+      // Merge all remaining runs to complete sort
+      sortState.mergeForceCollapse();
+      assert sortState.stackSize == 1;
+    } else {
+      sort(a, lo, hi, c);
     }
-
-    // Merge all remaining runs to complete sort
-    sortState.mergeForceCollapse();
-    assert sortState.stackSize == 1;
   }
 
   /**
