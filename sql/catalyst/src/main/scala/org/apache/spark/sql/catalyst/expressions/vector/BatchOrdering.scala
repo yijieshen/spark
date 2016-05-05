@@ -43,6 +43,13 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
   protected def bind(in: Seq[SortOrder], inputSchema: Seq[Attribute]): Seq[SortOrder] =
     in.map(BindReferences.bindReference(_, inputSchema))
 
+  def generate(
+      expressions: Seq[SortOrder],
+      inputSchema: Seq[Attribute],
+      defaultCapacity: Int): BatchOrdering = {
+    create(canonicalize(bind(expressions, inputSchema)), defaultCapacity)
+  }
+
   def genComparisons(ctx: CodeGenContext, ordering: Seq[SortOrder]): String = {
     ordering.map { order =>
       val eval = exprToBatch(order.child).gen(ctx)
@@ -120,8 +127,13 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
     }.mkString("\n")
   }
 
-  protected def create(in: Seq[SortOrder]): BatchOrdering = {
+  override protected def create(in: Seq[SortOrder]): BatchOrdering =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Seq[SortOrder], defaultCapacity: Int): BatchOrdering = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val comparisons = genComparisons(ctx, in)
     val code = s"""
       public SpecificBatchOrdering generate($exprType[] expr) {

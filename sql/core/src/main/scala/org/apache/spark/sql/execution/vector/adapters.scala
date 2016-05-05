@@ -32,16 +32,20 @@ case class AssembleToRowBatch(child: SparkPlan) extends UnaryNode {
   override def output: Seq[Attribute] = child.output
   override def outputPartitioning: Partitioning = child.outputPartitioning
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
+
   override def outputsRowBatches: Boolean = true
   override def canProcessRowBatches: Boolean = false
   override def canProcessRows: Boolean = true
+
+  private val defaultBatchCapacity = sqlContext.conf.vectorizedBatchCapacity
+
   override def doBatchExecute(): RDD[RowBatch] = {
     child.execute().mapPartitionsInternal { iter =>
       val schema = child.output.map(_.dataType)
-      val rb = RowBatch.create(schema.toArray)
+      val rb = RowBatch.create(schema.toArray, defaultBatchCapacity)
       val rbCapacity = rb.capacity
 
-      val specificInserter = GenerateRowInserter.generate(output)
+      val specificInserter = GenerateRowInserter.generate(output, defaultBatchCapacity)
 
       new Iterator[RowBatch] {
         override def hasNext: Boolean = iter.hasNext

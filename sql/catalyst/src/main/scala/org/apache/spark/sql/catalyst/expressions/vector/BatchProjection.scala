@@ -34,13 +34,14 @@ object BatchProjection {
   def create(
       exprs: Seq[Expression],
       inputSchema: Seq[Attribute],
-      subexpressionEliminationEnabled: Boolean = false): BatchProjection = {
+      subexpressionEliminationEnabled: Boolean = false,
+      defaultCapacity: Int = RowBatch.DEFAULT_CAPACITY): BatchProjection = {
     val e = exprs.map(BindReferences.bindReference(_, inputSchema))
       .map(_ transform {
         case CreateStruct(children) => CreateStructUnsafe(children)
         case CreateNamedStruct(children) => CreateNamedStructUnsafe(children)
       })
-    GenerateBatchProjection.generate(e, subexpressionEliminationEnabled)
+    GenerateBatchProjection.generate(e, subexpressionEliminationEnabled, defaultCapacity)
   }
 }
 
@@ -57,9 +58,10 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
     in.map(BindReferences.bindReference(_, inputSchema))
 
   def generate(
-    expressions: Seq[Expression],
-    subexpressionEliminationEnabled: Boolean): BatchProjection = {
-    create(expressions, subexpressionEliminationEnabled)
+      expressions: Seq[Expression],
+      subexpressionEliminationEnabled: Boolean,
+      defaultCapacity: Int): BatchProjection = {
+    create(expressions, subexpressionEliminationEnabled, defaultCapacity)
   }
 
   /**
@@ -67,12 +69,15 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
     * already available.
     */
   override protected def create(in: Seq[Expression]): BatchProjection =
-    create(in, subexpressionEliminationEnabled = false)
+    create(in, false, RowBatch.DEFAULT_CAPACITY)
 
   private def create(
       expressions: Seq[Expression],
-      subexpressionEliminationEnabled: Boolean): BatchProjection = {
+      subexpressionEliminationEnabled: Boolean,
+      defaultCapacity: Int): BatchProjection = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val batchExpressions = expressions.map(exprToBatch)
     val exprEvals = ctx.generateBatchExpressions(batchExpressions, subexpressionEliminationEnabled)
 
@@ -112,10 +117,12 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
 
         public RowBatch apply(RowBatch ${ctx.INPUT_ROWBATCH}) {
           $subexprReset
+          $result.capacity = ${ctx.INPUT_ROWBATCH}.capacity;
           $result.size = ${ctx.INPUT_ROWBATCH}.size;
           $result.selected = ${ctx.INPUT_ROWBATCH}.selected;
           $result.selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
           $result.endOfFile = ${ctx.INPUT_ROWBATCH}.endOfFile;
+          $result.sorted = ${ctx.INPUT_ROWBATCH}.sorted;
           $evals
           return $result;
         }

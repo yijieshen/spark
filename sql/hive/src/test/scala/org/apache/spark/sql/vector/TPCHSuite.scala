@@ -39,7 +39,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
-      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
+      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BATCH_CAPACITY.key -> "100000") {
       import sqlContext.implicits._
 
       val result =
@@ -66,7 +67,8 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
-      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
+      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BATCH_CAPACITY.key -> "100000") {
       import sqlContext.implicits._
 
       lazy val europe =

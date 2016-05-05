@@ -35,6 +35,7 @@ abstract class BatchAggregateIterator(
     aggregateExpressions: Seq[AggregateExpression],
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
+    defaultCapacity: Int,
     resultExpressions: Seq[NamedExpression],
     newMutableProjection: (Seq[Expression], Seq[Attribute]) => (() => MutableProjection))
   extends Iterator[UnsafeRow] with Logging {
@@ -121,13 +122,15 @@ abstract class BatchAggregateIterator(
   private[this] def isTesting: Boolean = sys.props.contains("spark.testing")
 
   protected val keyWrapper: BatchProjection =
-    BatchProjection.create(V2R(groupingExpressions) :: Nil, inputAttributes, false)
+    BatchProjection.create(V2R(groupingExpressions) :: Nil,
+      inputAttributes, false, defaultCapacity)
   protected val hasher: BatchProjection =
-    BatchProjection.create(new Murmur3Hash(groupingExpressions, 0) :: Nil, inputAttributes, false)
+    BatchProjection.create(new Murmur3Hash(groupingExpressions, 0) :: Nil,
+      inputAttributes, false, defaultCapacity)
 
   protected val updater: BatchBufferUpdate =
     GenerateBatchBufferUpdate.generate(
-      aggregateExpressions, inputAttributes, groupingExpressions.isEmpty)
+      aggregateExpressions, inputAttributes, groupingExpressions.isEmpty, defaultCapacity)
 
   protected val groupingProjection: UnsafeProjection =
     UnsafeProjection.create(groupingExpressions, inputAttributes)
@@ -215,6 +218,7 @@ class HashBasedBatchAggregateIterator(
     newMutableProjection: (Seq[Expression], Seq[Attribute]) => (() => MutableProjection),
     originalInputAttributes: Seq[Attribute],
     inputIter: Iterator[RowBatch],
+    defaultCapacity: Int,
     testFallbackStartsAt: Option[Int],
     numInputRows: LongSQLMetric,
     numOutputRows: LongSQLMetric,
@@ -226,6 +230,7 @@ class HashBasedBatchAggregateIterator(
     aggregateExpressions,
     aggregateAttributes,
     initialInputBufferOffset,
+    defaultCapacity,
     resultExpressions,
     newMutableProjection) with Logging {
 
@@ -265,7 +270,7 @@ class HashBasedBatchAggregateIterator(
   )
 
   // reused buffers
-  private[this] val buffers = Array.fill[UnsafeRow](RowBatch.DEFAULT_SIZE)(new UnsafeRow())
+  private[this] val buffers = Array.fill[UnsafeRow](defaultCapacity)(new UnsafeRow())
 
   private def processInputs(fallbackStartsAt: Int): Unit = {
     if (groupingExpressions.isEmpty) {

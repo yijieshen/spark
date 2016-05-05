@@ -61,6 +61,12 @@ case class GeneratedBatchExpressionCode(var code: String, var value: String)
  */
 class CodeGenContext {
 
+  private var _batchCapacity: Int = 0
+
+  def getBatchCapacity: Int = _batchCapacity
+
+  def setBatchCapacity(newCapacity: Int): Unit = _batchCapacity = newCapacity
+
   /**
    * Holding all the expressions those do not support codegen, will be evaluated directly.
    */

@@ -375,9 +375,11 @@ private[orc] case class OrcTableBatchScan(
       override def hasNext: Boolean = iterator.hasNext
       override def next(): RowBatch = {
         val prev = iterator.next()
+        rb.capacity = prev.capacity;
         rb.size = prev.size;
         rb.selected = prev.selected;
         rb.selectedInUse = prev.selectedInUse;
+        rb.sorted = prev.sorted;
         rb.endOfFile = prev.endOfFile;
         var i = 0
         while (i < rb.numCols) {
@@ -391,6 +393,8 @@ private[orc] case class OrcTableBatchScan(
     }
   }
 
+  private val batchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   def batchExecute(): RDD[RowBatch] = {
     val job = new Job(sqlContext.sparkContext.hadoopConfiguration)
     val conf = SparkHadoopUtil.get.getConfigurationFromJobContext(job)
@@ -402,6 +406,9 @@ private[orc] case class OrcTableBatchScan(
         conf.setBoolean(ConfVars.HIVEOPTINDEXFILTER.varname, true)
       }
     }
+
+    conf.setInt(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY,
+      sqlContext.conf.vectorizedBatchCapacity)
 
     // Sets requested columns
     addColumnIds(attributes, relation, conf)

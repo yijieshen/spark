@@ -150,7 +150,7 @@ public class ColumnVector implements Serializable {
    */
   private int appendFromCtrlStream(
       ReadableByteChannel in, int startIdx, int count, DataType type) throws IOException {
-    prepareBuffers(RowBatch.DEFAULT_SIZE, type);
+    prepareBuffers(count, type);
     int nullCount = readInt(in);
     if (nullCount > 0) {
       nulls = ensureFreeSpace(nulls, nullCount * 4);

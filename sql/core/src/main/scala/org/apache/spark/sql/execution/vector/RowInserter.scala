@@ -18,9 +18,9 @@
 package org.apache.spark.sql.execution.vector
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Expression, MutableRow, Attribute}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression, MutableRow}
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeFormatter, CodeGenerator}
-import org.apache.spark.sql.catalyst.vector.ColumnVector
+import org.apache.spark.sql.catalyst.vector.{ColumnVector, RowBatch}
 import org.apache.spark.sql.types._
 
 abstract class RowInserter {
@@ -85,8 +85,16 @@ object GenerateRowInserter extends CodeGenerator[Seq[Expression], RowInserter] {
   override protected def canonicalize(in: Seq[Expression]): Seq[Expression] = in
   override protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
     in
-  override protected def create(in: Seq[Expression]): RowInserter = {
+
+  def generate(expressions: Seq[Expression], defaultCapacity: Int): RowInserter =
+    create(expressions, defaultCapacity)
+
+  override protected def create(in: Seq[Expression]): RowInserter =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Seq[Expression], defaultCapacity: Int): RowInserter = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
 
     def nullSafeGetAndPut(dt: DataType, idx: Int): String = {
       dt match {

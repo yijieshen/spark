@@ -50,7 +50,7 @@ case class BatchCoalesce(
     val resultV = ctx.freshName("resultV")
 
     s"""
-      int[] $tmp = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $tmp = new int[${ctx.getBatchCapacity}];
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ColumnVector ${ev.value} = null;

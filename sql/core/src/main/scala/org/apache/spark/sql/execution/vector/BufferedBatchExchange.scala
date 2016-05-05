@@ -69,11 +69,14 @@ case class BufferedBatchExchange(
   @transient private lazy val bypassThreshold =
     sparkConf.getInt("spark.shuffle.sort.bypassMergeThreshold", 200)
 
+  private val defaultCapacity =
+    sparkConf.getInt(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY, RowBatch.DEFAULT_CAPACITY)
+
   val rbSchema = output.map(_.dataType).toArray
 
   private val serializer: Serializer = {
     if (tungstenMode) {
-      new DirectRowBatchSerializer(output)
+      new DirectRowBatchSerializer(output, defaultCapacity)
     } else {
       new SparkSqlSerializer(sparkConf)
     }
@@ -109,7 +112,7 @@ case class BufferedBatchExchange(
     }
     def getPartitionKeyExtractor(): BatchProjection = newPartitioning match {
       case h: HashPartitioning =>
-        BatchProjection.create(h.partitionIdExpression :: Nil, child.output)
+        BatchProjection.create(h.partitionIdExpression :: Nil, child.output, false, defaultCapacity)
       case _ => sys.error(s"BufferedBatchExchange not implemented for $newPartitioning")
     }
 
@@ -117,7 +120,7 @@ case class BufferedBatchExchange(
         iterator: Iterator[RowBatch],
         numPartitions: Int,
         partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
-      val batchInsertion = GenerateBatchInsertion.generate(output)
+      val batchInsertion = GenerateBatchInsertion.generate(output, defaultCapacity)
 
       new Iterator[Product2[Int, RowBatch]] {
         val rbBuffers = new Array[RowBatch](numPartitions)
@@ -219,7 +222,7 @@ case class BufferedBatchExchange(
     def sortRowsByPartition(iterator: Iterator[RowBatch],
       numPartitions: Int,
       partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
-      val batchWrite = GenerateBatchWrite.generate(output)
+      val batchWrite = GenerateBatchWrite.generate(output, defaultCapacity)
 
       new NextIterator[Product2[Int, RowBatch]] {
         var currentBatch: RowBatch = null
@@ -347,7 +350,7 @@ case class BufferedBatchExchange(
     val pool = new mutable.Queue[RowBatch]
     def get(): RowBatch = {
       if (pool.isEmpty) {
-        new RowBatch(rbSchema);
+        new RowBatch(rbSchema, defaultCapacity);
       } else {
         pool.dequeue()
       }

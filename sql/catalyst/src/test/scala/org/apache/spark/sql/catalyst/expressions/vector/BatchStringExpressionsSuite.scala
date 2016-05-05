@@ -71,7 +71,7 @@ class BatchStringExpressionsSuite extends SparkFunSuite {
   test("Substring") {
     rb.reset()
     val plan = GenerateBatchProjection.generate(
-      Substring(BoundReference(0, StringType, false), Literal(0), Literal(4)) :: Nil, false)
+      Substring(BoundReference(0, StringType, false), Literal(0), Literal(4)) :: Nil, false, 5)
     val nrb = plan.apply(rb)
     assert(nrb.size === 5)
     assert(nrb.columns(0).getString(0).toString === "abcd")

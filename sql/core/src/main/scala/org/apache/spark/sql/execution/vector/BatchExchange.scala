@@ -65,9 +65,11 @@ case class BatchExchange(
 
   @transient private lazy val sparkConf = child.sqlContext.sparkContext.getConf
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   private val serializer: Serializer = {
     if (tungstenMode) {
-      new RowBatchSerializer(output)
+      new RowBatchSerializer(output, defaultBatchCapacity)
     } else {
       new SparkSqlSerializer(sparkConf)
     }
@@ -102,14 +104,16 @@ case class BatchExchange(
     }
     def getPartitionKeyExtractor(): BatchProjection = newPartitioning match {
       case h: HashPartitioning =>
-        BatchProjection.create(h.partitionIdExpression :: Nil, child.output)
+        BatchProjection.create(
+          h.partitionIdExpression :: Nil, child.output,
+          false, defaultBatchCapacity)
       case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
     }
 
     def sortRowsByPartition(iterator: Iterator[RowBatch],
         numPartitions: Int,
         partitionKeyExtractor: BatchProjection): Iterator[Product2[Int, RowBatch]] = {
-      val batchWrite = GenerateBatchWrite.generate(output)
+      val batchWrite = GenerateBatchWrite.generate(output, defaultBatchCapacity)
 
       new NextIterator[Product2[Int, RowBatch]] {
         var currentBatch: RowBatch = null

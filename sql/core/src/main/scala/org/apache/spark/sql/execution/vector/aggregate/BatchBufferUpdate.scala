@@ -39,14 +39,19 @@ object GenerateBatchBufferUpdate extends CodeGenerator[Seq[Expression], BatchBuf
   def generate(
       in: Seq[Expression],
       inputSchema: Seq[Attribute],
-      noGroupingExpr: Boolean): BatchBufferUpdate =
-    create(canonicalize(bind(in, inputSchema)), noGroupingExpr)
+      noGroupingExpr: Boolean,
+      defaultCapacity: Int): BatchBufferUpdate =
+    create(canonicalize(bind(in, inputSchema)), noGroupingExpr, defaultCapacity)
 
   protected def create(expressions: Seq[Expression]): BatchBufferUpdate =
-    create(expressions, false)
+    create(expressions, false, RowBatch.DEFAULT_CAPACITY)
 
-  protected def create(expressions: Seq[Expression], noGroupingExpr: Boolean): BatchBufferUpdate = {
+  protected def create(
+      expressions: Seq[Expression],
+      noGroupingExpr: Boolean,
+      defaultCapacity: Int): BatchBufferUpdate = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
 
     val updateClass = classOf[BatchBufferUpdate].getName
 

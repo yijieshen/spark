@@ -38,7 +38,7 @@ import org.apache.spark.unsafe.types.UTF8String;
 
 public class RowBatch implements Serializable {
   public int numCols; // number of columns
-  public final int capacity;
+  public int capacity;
   public int size; // number of rows that qualify
   public int[] selected; // array of selected rows
   public boolean selectedInUse; // if selected is valid
@@ -59,14 +59,16 @@ public class RowBatch implements Serializable {
 
   public boolean endOfFile;
 
-  public static final int DEFAULT_SIZE = 1024;
+  public static final String SPARK_SQL_VECTORIZE_BATCH_CAPACITY = "spark.sql.vectorize.batch.capacity";
+
+  public static final int DEFAULT_CAPACITY = 1024;
 
   /**
    * Constructor for serialization purpose only
    * @param dataTypes
    */
-  public RowBatch(DataType[] dataTypes) {
-    this.capacity = DEFAULT_SIZE;
+  public RowBatch(DataType[] dataTypes, int capacity) {
+    this.capacity = capacity;
     this.numCols = dataTypes.length;
     this.size = 0;
     this.selectedInUse = false;
@@ -75,8 +77,52 @@ public class RowBatch implements Serializable {
     this.endOfFile = false;
     this.columns = new ColumnVector[numCols];
     for (int i = 0; i < numCols; i ++) {
-      columns[i] = new ColumnVector(DEFAULT_SIZE, dataTypes[i], true);
+      columns[i] = new ColumnVector(capacity, dataTypes[i], true);
     }
+  }
+
+  public RowBatch(int numCols, int capacity) {
+    this.numCols = numCols;
+    this.capacity = capacity;
+    size = capacity;
+    selected = new int[capacity];
+    selectedInUse = false;
+    sorted = new Integer[capacity];
+    sortedInUse = false;
+    columns = new ColumnVector[numCols];
+  }
+
+  /**
+   * The caller of this ctor doesn't care about batch size,
+   * the newly created batch act as a ColumnVector holder.
+   */
+  public RowBatch(int numCols) {
+    //this(numCols, DEFAULT_CAPACITY);
+    this.numCols = numCols;
+    this.capacity = 0;
+    this.size = 0;
+    this.selectedInUse = false;
+    this.sortedInUse = false;
+    columns = new ColumnVector[numCols];
+  }
+
+  public static RowBatch create(DataType[] dts, int capacity) {
+    RowBatch rb = new RowBatch(dts.length, capacity);
+    rb.fieldTypes = dts;
+    for (int i = 0; i < dts.length; i ++) {
+      rb.columns[i] = new ColumnVector(capacity, dts[i]);
+    }
+    return rb;
+  }
+
+//  public static RowBatch create(DataType[] dts) {
+//    return create(dts, DEFAULT_CAPACITY);
+//  }
+
+  public static RowBatch create(DataType[] dts, List<String> colNames, int capacity) {
+    RowBatch rb = create(dts, capacity);
+    rb.colNames = colNames;
+    return rb;
   }
 
   public void reset() {
@@ -110,21 +156,6 @@ public class RowBatch implements Serializable {
 
   public void writeToStreamInRange(WritableByteChannel out) throws IOException {
     writer.write(this, out);
-  }
-
-  public RowBatch(int numCols, int capacity) {
-    this.numCols = numCols;
-    this.capacity = capacity;
-    size = capacity;
-    selected = new int[capacity];
-    selectedInUse = false;
-    sorted = new Integer[capacity];
-    sortedInUse = false;
-    columns = new ColumnVector[numCols];
-  }
-
-  public RowBatch(int numCols) {
-    this(numCols, DEFAULT_SIZE);
   }
 
   public int[] getSelected() {
@@ -162,25 +193,6 @@ public class RowBatch implements Serializable {
         throw new UnsupportedOperationException("remove");
       }
     };
-  }
-
-  public static RowBatch create(DataType[] dts, int capacity) {
-    RowBatch rb = new RowBatch(dts.length, capacity);
-    rb.fieldTypes = dts;
-    for (int i = 0; i < dts.length; i ++) {
-      rb.columns[i] = new ColumnVector(capacity, dts[i]);
-    }
-    return rb;
-  }
-
-  public static RowBatch create(DataType[] dts) {
-    return create(dts, DEFAULT_SIZE);
-  }
-
-  public static RowBatch create(DataType[] dts, List<String> colNames) {
-    RowBatch rb = create(dts, DEFAULT_SIZE);
-    rb.colNames = colNames;
-    return rb;
   }
 
   public void sort(Comparator<Integer> comparator) {

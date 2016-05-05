@@ -57,6 +57,8 @@ case class BatchSort(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size"),
     "spillSize" -> SQLMetrics.createSizeMetric(sparkContext, "spill size"))
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   override protected def doExecute(): RDD[InternalRow] = {
     val schema = child.schema
     val childOutput = child.output
@@ -65,17 +67,19 @@ case class BatchSort(
     val spillSize = longMetric("spillSize")
 
     child.batchExecute().mapPartitionsInternal { iter =>
-      val rowVectorProjection = BatchProjection.create(V2R(output) :: Nil, output, false)
+      val rowVectorProjection = BatchProjection.create(
+        V2R(output) :: Nil, output, false, defaultBatchCapacity)
       val ordering = newOrdering(sortOrder, childOutput)
 
       val boundSortExpression = BindReferences.bindReference(sortOrder.head, childOutput)
       val prefixComparator = SortPrefixUtils.getPrefixComparator(boundSortExpression)
 
       val prefixProjection = BatchProjection.create(
-        SortPrefix(sortOrder.head) :: Nil, childOutput, false)
+        SortPrefix(sortOrder.head) :: Nil, childOutput, false, defaultBatchCapacity)
 
       val needFurtherComparisonBesidesPrefix = BatchOrderings.needFurtherCompare(sortOrder)
-      val innerBatchFullComparator = GenerateBatchOrdering.generate(sortOrder, childOutput)
+      val innerBatchFullComparator = GenerateBatchOrdering.generate(
+        sortOrder, childOutput, defaultBatchCapacity)
 
       val pageSize = SparkEnv.get.memoryManager.pageSizeBytes
       val sorter = new UnsafeExternalRowBatchSorter(

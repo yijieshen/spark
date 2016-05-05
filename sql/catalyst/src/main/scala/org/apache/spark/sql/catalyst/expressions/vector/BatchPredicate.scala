@@ -32,8 +32,20 @@ object GenerateBatchPredicate extends CodeGenerator[Expression, BatchPredicate] 
   override protected def bind(in: Expression, inputSchema: Seq[Attribute]): Expression =
     BindReferences.bindReference(in, inputSchema)
 
-  override protected def create(in: Expression): BatchPredicate = {
+  def generate(
+      in: Expression,
+      inputSchema: Seq[Attribute],
+      defaultCapacity: Int): BatchPredicate = {
+    create(canonicalize(bind(in, inputSchema)), defaultCapacity)
+  }
+
+  override protected def create(in: Expression): BatchPredicate =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Expression, defaultCapacity: Int): BatchPredicate = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val batchExpr = exprToBatch(in)
     val eval = batchExpr.gen(ctx)
     val code = s"""

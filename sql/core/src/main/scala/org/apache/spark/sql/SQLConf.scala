@@ -25,6 +25,7 @@ import scala.collection.JavaConverters._
 import org.apache.parquet.hadoop.ParquetOutputCommitter
 
 import org.apache.spark.sql.catalyst.CatalystConf
+import org.apache.spark.sql.catalyst.vector.RowBatch
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // This file defines the configuration options for Spark SQL.
@@ -455,6 +456,11 @@ private[spark] object SQLConf {
     doc = "When true, SQL query would execute in vectorized mode when possible"
   )
 
+  val VECTORIZE_BATCH_CAPACITY = intConf(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY,
+    defaultValue = Some(RowBatch.DEFAULT_CAPACITY),
+    isPublic = true,
+    doc = "the default capacity for a RowBatch")
+
   val VECTORIZE_AGG_ENABLED = booleanConf("spark.sql.vectorize.agg.enabled",
     defaultValue = Some(false),
     isPublic = true,
@@ -598,15 +604,17 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
 
   private[spark] def runSQLOnFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
-  private[spark] def vectorizedExecutionEnabled(): Boolean = getConf(VECTORIZE_ENABLED)
+  private[spark] def vectorizedExecutionEnabled: Boolean = getConf(VECTORIZE_ENABLED)
 
-  private[spark] def vectorizedAGGEnabled(): Boolean = getConf(VECTORIZE_AGG_ENABLED)
+  private[spark] def vectorizedBatchCapacity: Int = getConf(VECTORIZE_BATCH_CAPACITY)
 
-  private[spark] def vectorizedSortEnabled(): Boolean = getConf(VECTORIZE_SORT_ENABLED)
+  private[spark] def vectorizedAGGEnabled: Boolean = getConf(VECTORIZE_AGG_ENABLED)
 
-  private[spark] def vectorizedShuffleEnabled(): Boolean = getConf(VECTORIZE_SHUFFLE_ENABLED)
+  private[spark] def vectorizedSortEnabled: Boolean = getConf(VECTORIZE_SORT_ENABLED)
 
-  private[spark] def vectorizedBufferedShuffleEnabled(): Boolean =
+  private[spark] def vectorizedShuffleEnabled: Boolean = getConf(VECTORIZE_SHUFFLE_ENABLED)
+
+  private[spark] def vectorizedBufferedShuffleEnabled: Boolean =
     getConf(VECTORIZE_BUFFERED_SHUFFLE_ENABLED)
 
   /** ********************** SQLConf functionality methods ************ */

@@ -47,11 +47,13 @@ case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) ext
       iter.map(_.rowIterator().asScala).flatten
     }
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   protected override def doBatchExecute(): RDD[RowBatch] = {
     val numRows = longMetric("numRows")
     child.batchExecute().mapPartitionsInternal { iter =>
       val project = BatchProjection.create(projectList, child.output,
-        subexpressionEliminationEnabled)
+        subexpressionEliminationEnabled, defaultBatchCapacity)
       iter.map { rowBatch =>
         numRows += rowBatch.size
         project(rowBatch)
@@ -80,11 +82,14 @@ case class BatchFilter(condition: Expression, child: SparkPlan) extends UnaryNod
   protected override def doExecute(): RDD[InternalRow] =
     throw new UnsupportedOperationException(getClass.getName)
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   protected override def doBatchExecute(): RDD[RowBatch] = attachTree(this, "batchExecute") {
     val numInputRows = longMetric("numInputRows")
     val numOutputRows = longMetric("numOutputRows")
     child.batchExecute().mapPartitionsInternal { iter =>
-      val predicate = GenerateBatchPredicate.generate(condition, child.output)
+      val predicate = GenerateBatchPredicate.generate(
+        condition, child.output, defaultBatchCapacity)
       iter.map { rowBatch =>
         numInputRows += rowBatch.size
         predicate.eval(rowBatch)

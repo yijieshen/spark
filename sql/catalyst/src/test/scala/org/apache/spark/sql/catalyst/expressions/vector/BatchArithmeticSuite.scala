@@ -42,7 +42,7 @@ class BatchArithmeticSuite extends SparkFunSuite {
     rb.reset()
     val plan = GenerateBatchProjection.generate(
       Pmod(new Murmur3Hash(BoundReference(0, LongType, false) :: Nil),
-        Literal(5)) :: Nil, false)
+        Literal(5)) :: Nil, false, 5)
 
     val planB = UnsafeProjection.create(
       Pmod(new Murmur3Hash(BoundReference(0, LongType, false) :: Nil),

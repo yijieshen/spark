@@ -35,8 +35,16 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
   override protected def bind(
     in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] = in
 
-  override protected def create(in: Seq[Expression]): BatchRead = {
+  def generate(expressions: Seq[Expression], defaultCapacity: Int): BatchRead =
+    create(expressions, defaultCapacity)
+
+  override protected def create(in: Seq[Expression]): BatchRead =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Seq[Expression], defaultCapacity: Int): BatchRead = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val schema = in.map(_.dataType)
 
     val columnsRead = schema.zipWithIndex.map { case (dt, idx) =>

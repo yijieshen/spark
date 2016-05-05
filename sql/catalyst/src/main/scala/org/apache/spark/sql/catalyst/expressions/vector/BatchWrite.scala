@@ -35,8 +35,17 @@ object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
   override protected def bind(
     in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] = in
 
-  override protected def create(in: Seq[Expression]): BatchWrite = {
+  def generate(expressions: Seq[Expression], defaultCapacity: Int): BatchWrite = {
+    create(expressions, defaultCapacity)
+  }
+
+  override protected def create(in: Seq[Expression]): BatchWrite =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Seq[Expression], defaultCapacity: Int): BatchWrite = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val schema = in.map(_.dataType)
 
     val columnsWrite = schema.zipWithIndex.map { case (dt, idx) =>

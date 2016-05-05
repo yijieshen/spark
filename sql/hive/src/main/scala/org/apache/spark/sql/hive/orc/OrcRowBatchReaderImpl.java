@@ -77,6 +77,8 @@ public class OrcRowBatchReaderImpl implements OrcRowBatchReader {
   private boolean[] includedRowGroups = null;
   private final Configuration conf;
   private final MetadataReader metadata;
+
+  private int defaultBatchCapacity;
   // TODO: Zero copy in hadoop 2.3 and then
 
   protected OrcRowBatchReaderImpl(
@@ -120,6 +122,8 @@ public class OrcRowBatchReaderImpl implements OrcRowBatchReader {
       }
     }
 
+    defaultBatchCapacity =
+      conf.getInt(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY, RowBatch.DEFAULT_CAPACITY);
     firstRow = skippedRows;
     totalRowCount = rows;
     // create tree reader
@@ -139,11 +143,11 @@ public class OrcRowBatchReaderImpl implements OrcRowBatchReader {
   public RowBatch next(RowBatch previous) throws IOException {
     assert (previous != null): "Shouldn't previous an already allocated RowBatch?";
     try {
-      long batchSize = computeBatchSize(RowBatch.DEFAULT_SIZE);
+      long batchSize = computeBatchSize(defaultBatchCapacity);
       rowInStripe += batchSize;
 
       previous.selectedInUse = false;
-      reader.nextVector(previous.columns, (int) batchSize);
+      reader.nextVector(previous.columns, (int) batchSize, defaultBatchCapacity);
       previous.size = (int) batchSize;
       advanceToNextRow(reader, rowInStripe + rowBaseInStripe, true);
       return previous;

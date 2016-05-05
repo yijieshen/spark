@@ -73,6 +73,8 @@ case class HashBasedBatchAggregate(
     }
   }
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
     val numInputRows = longMetric("numInputRows")
     val numOutputRows = longMetric("numOutputRows")
@@ -94,6 +96,7 @@ case class HashBasedBatchAggregate(
             newMutableProjection,
             child.output,
             iter,
+            defaultBatchCapacity,
             testFallbackStartsAt,
             numInputRows,
             numOutputRows,

@@ -31,8 +31,17 @@ object GenerateBatchInsertion extends CodeGenerator[Seq[Expression], BatchInsert
   override protected def bind(
     in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] = in
 
-  override protected def create(in: Seq[Expression]): BatchInsertion = {
+  def generate(in: Seq[Expression], defaultCapacity: Int): BatchInsertion = {
+    create(canonicalize(in), defaultCapacity)
+  }
+
+  override protected def create(in: Seq[Expression]): BatchInsertion =
+    create(in, RowBatch.DEFAULT_CAPACITY)
+
+  protected def create(in: Seq[Expression], defaultCapacity: Int): BatchInsertion = {
     val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
     val schema = in.map(_.dataType)
 
     val columnInsertions = schema.zipWithIndex.map { case (dt, idx) =>

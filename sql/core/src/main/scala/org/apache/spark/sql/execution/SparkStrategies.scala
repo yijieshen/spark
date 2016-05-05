@@ -132,8 +132,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
    * Used to plan the aggregate operator for expressions based on the AggregateFunction2 interface.
    */
   case class Aggregation(sqlContext: SQLContext) extends Strategy {
-    val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled()
-    val vectorizeAGGEnabled = sqlContext.conf.vectorizedAGGEnabled()
+    val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled
+    val vectorizeAGGEnabled = sqlContext.conf.vectorizedAGGEnabled
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.Aggregate(groupingExpressions, resultExpressions, child) =>

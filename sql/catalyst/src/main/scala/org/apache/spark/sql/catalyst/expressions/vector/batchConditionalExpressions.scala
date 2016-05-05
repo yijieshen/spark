@@ -65,7 +65,7 @@ case class BatchIf(
       int $initialSize = ${ctx.INPUT_ROWBATCH}.size;
       boolean $initialSelectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
       int[] $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $initialSelected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $initialSelected = new int[${ctx.getBatchCapacity}];
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
@@ -80,8 +80,8 @@ case class BatchIf(
 
       int $sizeAfterCondition = ${ctx.INPUT_ROWBATCH}.size;
       int[] $selectedAfterCondition = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $tmp = new int[${RowBatch.DEFAULT_SIZE}];
-      int[] $unselected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $tmp = new int[${ctx.getBatchCapacity}];
+      int[] $unselected = new int[${ctx.getBatchCapacity}];
 
       // calculate unselected ones in last evaluate.
       for (int j = 0; j < $initialSize; j ++) {
@@ -233,7 +233,7 @@ case class BatchCaseWhen(
       int $initialSize = ${ctx.INPUT_ROWBATCH}.size;
       boolean $initialSelectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
       int[] $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $initialSelected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $initialSelected = new int[${ctx.getBatchCapacity}];
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
@@ -248,8 +248,8 @@ case class BatchCaseWhen(
 
       int $sizeAfterCondition = ${ctx.INPUT_ROWBATCH}.size;
       int[] $selectedAfterCondition = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $tmp = new int[${RowBatch.DEFAULT_SIZE}];
-      int[] $unselected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $tmp = new int[${ctx.getBatchCapacity}];
+      int[] $unselected = new int[${ctx.getBatchCapacity}];
 
       // calculate unselected ones in last evaluate.
       for (int j = 0; j < $initialSize; j ++) {

@@ -50,6 +50,8 @@ public class VectorizedOrcInputFormat extends FileInputFormat<Void, RowBatch> {
     private final OrcRowBatchReader batchReader;
     private final List<String> colsToInclude;
 
+    private final int defaultBatchCapacity;
+
     private float progress = 0.0f;
     private boolean addPartitionCols = true;
 
@@ -62,6 +64,8 @@ public class VectorizedOrcInputFormat extends FileInputFormat<Void, RowBatch> {
       this.fileReader = fileReader;
       this.batchReader = createReaderFromFile(fileReader, conf, offset, length);
       this.colsToInclude = ColumnProjectionUtils.getReadColumnNames(conf);
+      this.defaultBatchCapacity =
+        conf.getInt(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY, RowBatch.DEFAULT_CAPACITY);
     }
 
     @Override
@@ -90,7 +94,7 @@ public class VectorizedOrcInputFormat extends FileInputFormat<Void, RowBatch> {
       for (int i = 0; i < colsToInclude.size(); i ++) {
         dts[i] = fileOrigin.apply(colsToInclude.get(i)).dataType();
       }
-      rowBatch = RowBatch.create(dts, colsToInclude);
+      rowBatch = RowBatch.create(dts, colsToInclude, defaultBatchCapacity);
       return rowBatch;
     }
 

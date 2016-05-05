@@ -903,7 +903,7 @@ case class BatchOr(
       int $initialSize = ${ctx.INPUT_ROWBATCH}.size;
       boolean $initialSelectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
       int[] $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $initialSelected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $initialSelected = new int[${ctx.getBatchCapacity}];
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
@@ -920,8 +920,8 @@ case class BatchOr(
       // after the first child is evaluated.
       int $sizeAfterFirstChild = ${ctx.INPUT_ROWBATCH}.size;
       int[] $selectedAfterFirstChild = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $tmp = new int[${RowBatch.DEFAULT_SIZE}];
-      int[] $unselected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $tmp = new int[${ctx.getBatchCapacity}];
+      int[] $unselected = new int[${ctx.getBatchCapacity}];
 
       // calculate unselected ones in last evaluate.
       for (int j = 0; j < $initialSize; j ++) {
@@ -982,7 +982,7 @@ case class BatchNot(
     s"""
       int $initialSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $curSelected = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $initialSelected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $initialSelected = new int[${ctx.getBatchCapacity}];
       if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
         System.arraycopy($curSelected, 0, $initialSelected, 0, $initialSize);
       } else {
@@ -999,8 +999,8 @@ case class BatchNot(
       // after the first child is evaluated.
       int $sizeAfterFirstChild = ${ctx.INPUT_ROWBATCH}.size;
       int[] $selectedAfterFirstChild = ${ctx.INPUT_ROWBATCH}.selected;
-      int[] $tmp = new int[${RowBatch.DEFAULT_SIZE}];
-      int[] $unselected = new int[${RowBatch.DEFAULT_SIZE}];
+      int[] $tmp = new int[${ctx.getBatchCapacity}];
+      int[] $unselected = new int[${ctx.getBatchCapacity}];
 
       // calculate unselected ones in last evaluate.
       for (int j = 0; j < $initialSize; j ++) {

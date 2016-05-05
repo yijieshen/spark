@@ -40,7 +40,7 @@ case class VectorsToRow(
 
     val vectorGen = ctx.freshName("vectorGen")
     ctx.addMutableState(vectorGenClass, vectorGen, s"this.$vectorGen = " +
-      s"new $vectorGenClass(${RowBatch.DEFAULT_SIZE}, $numFields, $numVarFields);")
+      s"new $vectorGenClass(${ctx.getBatchCapacity}, $numFields, $numVarFields);")
 
     ctx.references += this.underlyingExpr
 

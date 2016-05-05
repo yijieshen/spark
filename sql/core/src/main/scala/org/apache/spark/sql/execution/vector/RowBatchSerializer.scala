@@ -21,18 +21,26 @@ import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 
+import org.apache.spark.SparkConf
+
 import scala.reflect.ClassTag
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 
-class RowBatchSerializer(schema: Seq[Attribute]) extends Serializer with Serializable {
-  override def newInstance(): SerializerInstance = new RowBatchSerializerInstance(schema)
+class RowBatchSerializer(
+    schema: Seq[Attribute],
+    defaultCapacity: Int) extends Serializer with Serializable {
+  override def newInstance(): SerializerInstance =
+    new RowBatchSerializerInstance(schema, defaultCapacity)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
-private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends SerializerInstance {
+private class RowBatchSerializerInstance(
+    schema: Seq[Attribute],
+    defaultCapacity: Int) extends SerializerInstance {
+
   /**
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
     * length (stored as a 4-byte integer, written high byte first), followed by the record's bytes.
@@ -83,9 +91,9 @@ private class RowBatchSerializerInstance(schema: Seq[Attribute]) extends Seriali
       private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
       private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
       private[this] var rowBatch: RowBatch =
-        RowBatch.create(schema.map(_.dataType).toArray, RowBatch.DEFAULT_SIZE)
+        RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
       private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
-      private[this] val reader: BatchRead = GenerateBatchRead.generate(schema)
+      private[this] val reader: BatchRead = GenerateBatchRead.generate(schema, defaultCapacity)
       rowBatch.reader = reader
 
       private[this] val EOF: Int = -1

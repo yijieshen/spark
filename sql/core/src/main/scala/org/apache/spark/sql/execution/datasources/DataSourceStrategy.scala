@@ -102,7 +102,7 @@ private[sql] case class DataSourceStrategy(sqlContext: SQLContext) extends Strat
 
     // Scanning non-partitioned HadoopFsRelation
     case PhysicalOperation(projects, filters, l @ LogicalRelation(t: HadoopFsRelation, _))
-        if (sqlContext.conf.vectorizedExecutionEnabled() && t.canOutputRowBatches) =>
+        if (sqlContext.conf.vectorizedExecutionEnabled && t.canOutputRowBatches) =>
       // See buildPartitionedTableScan for the reason that we need to create a shard
       // broadcast HadoopConf.
       val sharedHadoopConf = SparkHadoopUtil.get.conf
