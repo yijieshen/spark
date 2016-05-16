@@ -31,7 +31,7 @@ import org.apache.spark.util.Utils
 /**
  ** Utilities for running commands with the spark classpath.
  */
-private[deploy]
+private[spark]
 object CommandUtils extends Logging {
 
   /**

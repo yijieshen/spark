@@ -17,16 +17,19 @@
 
 package org.apache.spark.executor
 
+import java.io.File
 import java.net.URL
 import java.nio.ByteBuffer
 
 import scala.collection.mutable
+import scala.collection.JavaConverters._
 import scala.util.{Failure, Success}
-import org.apache.spark.rpc._
+
 import org.apache.spark._
+import org.apache.spark.rpc._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.deploy.worker.WorkerWatcher
+import org.apache.spark.deploy.worker.{CommandUtils, WorkerWatcher}
 import org.apache.spark.scheduler.TaskDescription
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.serializer.SerializerInstance
@@ -44,6 +47,7 @@ private[spark] class CoarseGrainedExecutorBackend(
 
   var executor: Executor = null
   @volatile var driver: Option[RpcEndpointRef] = None
+  @volatile private var perfProcess: Option[Process] = None
 
   // If this CoarseGrainedExecutorBackend is changed to support multiple threads, then this may need
   // to be changed so that we don't share the serializer instance across threads
@@ -74,10 +78,69 @@ private[spark] class CoarseGrainedExecutorBackend(
       .map(e => (e._1.substring(prefix.length).toLowerCase, e._2))
   }
 
+  def startPerf(): Unit = {
+    new Thread("perf") {
+      override def run(): Unit = {
+        val executorPID = Utils.getProcessName().split('@')(0)
+        val events =
+          "cpu-cycles,instructions,cache-references,cache-misses,branch-instructions," +
+            "branch-misses,stalled-cycles-frontend,stalled-cycles-backend,ref-cycles," +
+            "cpu-clock,task-clock,page-faults,context-switches,cpu-migrations," +
+            "minor-faults,major-faults,alignment-faults,emulation-faults," +
+            "L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,L1-dcache-store-misses," +
+            "L1-dcache-prefetches,L1-dcache-prefetch-misses,L1-icache-loads," +
+            "L1-icache-load-misses,LLC-loads,LLC-load-misses,LLC-stores,LLC-store-misses," +
+            "LLC-prefetches,LLC-prefetch-misses,dTLB-loads,dTLB-load-misses,dTLB-stores," +
+            "dTLB-store-misses,iTLB-loads,iTLB-load-misses,branch-loads,branch-load-misses"
+        val command = s"perf stat -p $executorPID -e $events"
+
+        logInfo(s"Starting perf executor: perf stat -p $executorPID")
+
+        perfProcess = Some(new ProcessBuilder(command.split(" ").toList.asJava).start())
+        val perferr = new File("perf_err")
+        CommandUtils.redirectStream(perfProcess.get.getErrorStream, perferr)
+        perfProcess.get.waitFor()
+      }
+    }.start()
+  }
+
+  def stopPerf(): Thread = {
+    val t = new Thread("end_perf") {
+      def getPID(p: Process): Int = {
+        try {
+          val f = p.getClass.getDeclaredField("pid")
+          f.setAccessible(true)
+          f.getInt(p)
+        } catch {
+          case e: Throwable => -1
+        }
+      }
+
+      override def run(): Unit = {
+        logInfo(s"stopping perf tools...")
+        perfProcess match {
+          case Some(p) =>
+            var perfPID = getPID(p)
+            while (perfPID <= 0) {
+              Thread.sleep(100)
+              perfPID = getPID(p)
+            }
+            Runtime.getRuntime.exec(s"kill -SIGINT $perfPID")
+            logInfo(s"stopping perf at $perfPID")
+          case None => Thread.sleep(100); run()
+        }
+      }
+    }
+    t.start()
+    t
+  }
+
   override def receive: PartialFunction[Any, Unit] = {
     case RegisteredExecutor(hostname) =>
       logInfo("Successfully registered with driver")
       executor = new Executor(executorId, hostname, env, userClassPath, isLocal = false)
+      val perfEnabled = env.conf.getBoolean("spark.executor.perf.enabled", false)
+      if (perfEnabled) startPerf()
 
     case RegisterExecutorFailed(message) =>
       logError("Slave registration failed: " + message)
@@ -103,6 +166,11 @@ private[spark] class CoarseGrainedExecutorBackend(
       }
 
     case StopExecutor =>
+      val perfEnabled = env.conf.getBoolean("spark.executor.perf.enabled", false)
+      if(perfEnabled) {
+        val t = stopPerf()
+        t.join()
+      }
       logInfo("Driver commanded a shutdown")
       // Cannot shutdown here because an ack may need to be sent back to the caller. So send
       // a message to self to actually do the shutdown.
