@@ -78,7 +78,8 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
           ${initMutableStates(ctx)}
         }
 
-        public void append(java.nio.channels.ReadableByteChannel in, RowBatch rb, int startIdx, int numRows) throws java.io.IOException{
+        public void append(java.nio.channels.ReadableByteChannel in,
+            RowBatch rb, int startIdx, int numRows) throws java.io.IOException{
           $columnsRead
         }
       }

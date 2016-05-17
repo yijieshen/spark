@@ -79,7 +79,8 @@ object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
           ${initMutableStates(ctx)}
         }
 
-        public void write(RowBatch rb, java.nio.channels.WritableByteChannel out) throws java.io.IOException {
+        public void write(RowBatch rb,
+            java.nio.channels.WritableByteChannel out) throws java.io.IOException {
           $columnsWrite
         }
       }
