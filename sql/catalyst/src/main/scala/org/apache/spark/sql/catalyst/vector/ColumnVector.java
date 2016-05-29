@@ -97,6 +97,11 @@ public class ColumnVector implements Serializable {
     this.pos = 0;
   }
 
+  // ColumnVector do not necessarily have the same capacity as RowBatch, e.g. a literal cv.
+  public int getCapacity() {
+    return isNull.length;
+  }
+
   /**
    * Resets the column to default state
    *  - fills the isNull array with false
