@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.execution.vector.aggregate
 
-import scala.collection.mutable.ArrayBuffer
+import org.apache.spark.sql.catalyst.InternalRow
 
+import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.{InternalAccumulator, Logging, TaskContext}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
@@ -36,6 +37,7 @@ abstract class BatchAggregateIterator(
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
     defaultCapacity: Int,
+    vectorizeHMEnabled: Boolean,
     resultExpressions: Seq[NamedExpression],
     newMutableProjection: (Seq[Expression], Seq[Attribute]) => (() => MutableProjection))
   extends Iterator[UnsafeRow] with Logging {
@@ -136,6 +138,9 @@ abstract class BatchAggregateIterator(
     UnsafeProjection.create(groupingExpressions, inputAttributes)
   protected val groupingAttributes = groupingExpressions.map(_.toAttribute)
 
+  protected val vhmGenerator = new GenerateVectorizedHashMap(
+    groupingExpressions, aggregateExpressions, inputAttributes)
+
   // Positions of those imperative aggregate functions in allAggregateFunctions.
   // For example, we have func1, func2, func3, func4 in aggregateFunctions, and
   // func2 and func3 are imperative aggregate functions.
@@ -207,6 +212,13 @@ abstract class BatchAggregateIterator(
 
   protected val generateOutput: (UnsafeRow, MutableRow) => UnsafeRow =
     generateResultProjection()
+
+  protected def generateVecotrizedOutput: UnsafeProjection = {
+    val bufferAttributes = aggregateFunctions.flatMap(_.aggBufferAttributes)
+    UnsafeProjection.create(
+      groupingAttributes ++ bufferAttributes,
+      groupingAttributes ++ bufferAttributes)
+  }
 }
 
 class HashBasedBatchAggregateIterator(
@@ -220,6 +232,7 @@ class HashBasedBatchAggregateIterator(
     inputIter: Iterator[RowBatch],
     defaultCapacity: Int,
     testFallbackStartsAt: Option[Int],
+    vectorizeHMEnabled: Boolean,
     numInputRows: LongSQLMetric,
     numOutputRows: LongSQLMetric,
     dataSize: LongSQLMetric,
@@ -231,6 +244,7 @@ class HashBasedBatchAggregateIterator(
     aggregateAttributes,
     initialInputBufferOffset,
     defaultCapacity,
+    vectorizeHMEnabled,
     resultExpressions,
     newMutableProjection) with Logging {
 
@@ -259,7 +273,7 @@ class HashBasedBatchAggregateIterator(
   // This is the hash map used for hash-based aggregation. It is backed by an
   // UnsafeFixedWidthAggregationMap and it is used to store
   // all groups and their corresponding aggregation buffers for hash-based aggregation.
-  private[this] val hashMap = new UnsafeFixedWidthAggregationMap(
+  private[this] val hashMap = if (!vectorizeHMEnabled) new UnsafeFixedWidthAggregationMap(
     initialAggregationBuffer,
     StructType.fromAttributes(aggregateFunctions.flatMap(_.aggBufferAttributes)),
     StructType.fromAttributes(groupingExpressions.map(_.toAttribute)),
@@ -267,7 +281,9 @@ class HashBasedBatchAggregateIterator(
     1024 * 16, // initial capacity
     TaskContext.get().taskMemoryManager().pageSizeBytes,
     false // disable tracking of performance metrics
-  )
+  ) else null
+
+  private[this] val vhm = if (vectorizeHMEnabled) vhmGenerator.generate() else null
 
   // reused buffers
   private[this] val buffers = Array.fill[UnsafeRow](defaultCapacity)(new UnsafeRow())
@@ -281,7 +297,7 @@ class HashBasedBatchAggregateIterator(
         numInputRows += currentBatch.size
         updater.update(currentBatch, buffers)
       }
-    } else {
+    } else if (!vectorizeHMEnabled) {
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
         numInputRows += currentBatch.size
@@ -305,8 +321,15 @@ class HashBasedBatchAggregateIterator(
             i += 1
           }
         }
-
         updater.update(currentBatch, buffers)
+      }
+    } else {
+      while (inputIter.hasNext) {
+        val currentBatch = inputIter.next()
+        numInputRows += currentBatch.size
+        val hashCodes = hasher(currentBatch).columns(0).intVector
+
+        vhm.insertAll(hashCodes, currentBatch)
       }
     }
   }
@@ -315,17 +338,17 @@ class HashBasedBatchAggregateIterator(
   // are using hash-based aggregation.
   private[this] var aggregationBufferMapIterator: KVIterator[UnsafeRow, UnsafeRow] = null
 
+  private[this] var vhmRowIterator: java.util.Iterator[InternalRow] = null
+
   // Indicates if aggregationBufferMapIterator still has key-value pairs.
   private[this] var mapIteratorHasNext: Boolean = false
-
-  private[this] val sortBased: Boolean = false
 
   /**
    * Start processing input rows
    */
   processInputs(Int.MaxValue)
 
-  if (!sortBased) {
+  if (!vectorizeHMEnabled) {
     // First, set aggregationBufferMapIterator.
     aggregationBufferMapIterator = hashMap.iterator()
     // Pre-load the first key-value pair from the aggregationBufferMapIterator.
@@ -334,6 +357,8 @@ class HashBasedBatchAggregateIterator(
     if (!mapIteratorHasNext) {
       hashMap.free()
     }
+  } else if (vectorizeHMEnabled) {
+    vhmRowIterator = vhm.rowIterator()
   }
 
   private def generateProcessRow(
@@ -344,40 +369,50 @@ class HashBasedBatchAggregateIterator(
   }
 
   override final def hasNext: Boolean = {
-    (!sortBased && mapIteratorHasNext)
+    if (!vectorizeHMEnabled) {
+      mapIteratorHasNext
+    } else {
+      vhmRowIterator.hasNext
+    }
   }
 
   override final def next(): UnsafeRow = {
-    val result = generateOutput(
-      aggregationBufferMapIterator.getKey,
-      aggregationBufferMapIterator.getValue)
+    if (!vectorizeHMEnabled) {
+      val result = generateOutput(
+        aggregationBufferMapIterator.getKey,
+        aggregationBufferMapIterator.getValue)
 
-    // Pre-load next key-value pair form aggregationBufferMapIterator to make hasNext
-    // idempotent.
-    mapIteratorHasNext = aggregationBufferMapIterator.next()
+      // Pre-load next key-value pair form aggregationBufferMapIterator to make hasNext
+      // idempotent.
+      mapIteratorHasNext = aggregationBufferMapIterator.next()
 
-    val output = if (!mapIteratorHasNext) {
-      // If there is no input from aggregationBufferMapIterator, we copy current result.
-      val resultCopy = result.copy()
-      // Then, we free the map.
-      hashMap.free()
-      resultCopy
+      val output = if (!mapIteratorHasNext) {
+        // If there is no input from aggregationBufferMapIterator, we copy current result.
+        val resultCopy = result.copy()
+        // Then, we free the map.
+        hashMap.free()
+        resultCopy
+      } else {
+        result
+      }
+
+      // If this is the last record, update the task's peak memory usage. Since we destroy
+      // the map to create the sorter, their memory usages should not overlap, so it is safe
+      // to just use the max of the two.
+      if (!hasNext) {
+        val mapMemory = hashMap.getPeakMemoryUsedBytes
+        dataSize += mapMemory
+        spillSize += TaskContext.get().taskMetrics().memoryBytesSpilled - spillSizeBefore
+        TaskContext.get().internalMetricsToAccumulators(
+          InternalAccumulator.PEAK_EXECUTION_MEMORY).add(mapMemory)
+      }
+      numOutputRows += 1
+      output
     } else {
+      val result = generateVecotrizedOutput(vhmRowIterator.next())
+      numOutputRows += 1
       result
     }
-
-    // If this is the last record, update the task's peak memory usage. Since we destroy
-    // the map to create the sorter, their memory usages should not overlap, so it is safe
-    // to just use the max of the two.
-    if (!hasNext) {
-      val mapMemory = hashMap.getPeakMemoryUsedBytes
-      dataSize += mapMemory
-      spillSize += TaskContext.get().taskMetrics().memoryBytesSpilled - spillSizeBefore
-      TaskContext.get().internalMetricsToAccumulators(
-        InternalAccumulator.PEAK_EXECUTION_MEMORY).add(mapMemory)
-    }
-    numOutputRows += 1
-    output
   }
 
   /**

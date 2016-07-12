@@ -28,6 +28,7 @@ package object vector {
       case a @ Add(l, r) => BatchAdd(exprToBatch(l), exprToBatch(r), a)
       case s @ Subtract(l, r) => BatchSubtract(exprToBatch(l), exprToBatch(r), s)
       case m @ Multiply(l, r) => BatchMultiply(exprToBatch(l), exprToBatch(r), m)
+      case ba @ BitwiseAnd(l, r) => BatchBitwiseAnd(exprToBatch(l), exprToBatch(r), ba)
       case d @ Divide(l, r) => BatchDivide(exprToBatch(l), exprToBatch(r), d)
       case p @ Pmod(l, r) => BatchPmod(exprToBatch(l), exprToBatch(r), p)
 

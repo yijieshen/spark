@@ -190,6 +190,6 @@ object GenerateColumnAccessor extends CodeGenerator[Seq[DataType], ColumnarItera
 
     logDebug(s"Generated ColumnarIterator: ${CodeFormatter.format(code)}")
 
-    compile(code).generate(ctx.references.toArray).asInstanceOf[ColumnarIterator]
+    CodeGenerator.compile(code).generate(ctx.references.toArray).asInstanceOf[ColumnarIterator]
   }
 }

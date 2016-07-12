@@ -583,7 +583,7 @@ class HiveContext private[hive](
       Aggregation(self),
       LeftSemiJoin,
       EquiJoinSelection,
-      BasicOperators,
+      BasicOperators(self),
       BroadcastNestedLoop,
       CartesianProduct,
       DefaultJoin

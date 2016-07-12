@@ -144,6 +144,16 @@ case class BatchMultiply(
   override def symbol: String = "*"
 }
 
+case class BatchBitwiseAnd(
+    left: BatchExpression,
+    right: BatchExpression,
+    underlyingExpr: Expression) extends BinaryBatchArithmetic {
+
+  override def inputType: AbstractDataType = NumericType
+
+  override def symbol: String = "&"
+}
+
 case class BatchDivide(
     left: BatchExpression,
     right: BatchExpression,

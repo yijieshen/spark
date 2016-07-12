@@ -129,7 +129,7 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
       }
       """
 
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[BatchProjection]
   }
 }

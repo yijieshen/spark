@@ -134,6 +134,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   case class Aggregation(sqlContext: SQLContext) extends Strategy {
     val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled
     val vectorizeAGGEnabled = sqlContext.conf.vectorizedAGGEnabled
+    val vectorizeHMEnabled = sqlContext.conf.vectorizedHMEnabled
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.Aggregate(groupingExpressions, resultExpressions, child) =>
@@ -217,7 +218,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
               aggregateExpressions,
               aggregateFunctionToAttribute,
               rewrittenResultExpressions,
-              planLater(child), vectorizeAGGEnabled)
+              planLater(child), vectorizeAGGEnabled, vectorizeHMEnabled)
           } else {
             aggregate.Utils.planAggregateWithOneDistinct(
               namedGroupingExpressions.map(_._2),
@@ -225,7 +226,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
               functionsWithoutDistinct,
               aggregateFunctionToAttribute,
               rewrittenResultExpressions,
-              planLater(child), vectorizeAGGEnabled)
+              planLater(child), vectorizeAGGEnabled, vectorizeHMEnabled)
           }
 
         aggregateOperator
@@ -302,8 +303,10 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   }
 
   // Can we automate these 'pass through' operations?
-  object BasicOperators extends Strategy {
+  case class BasicOperators(sqlContext: SQLContext) extends Strategy {
     def numPartitions: Int = self.numPartitions
+
+    val vectorizeEnabled = sqlContext.conf.vectorizedExecutionEnabled
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case r: RunnableCommand => ExecutedCommand(r) :: Nil
@@ -335,7 +338,9 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
         execution.Sort(sortExprs, global = false, child = planLater(child)) :: Nil
       case logical.Sort(sortExprs, global, child) =>
         execution.Sort(sortExprs, global, planLater(child)) :: Nil
-      case logical.Project(projectList, child) =>
+      case logical.Project(projectList, child) if vectorizeEnabled =>
+        execution.vector.BatchProject(projectList, planLater(child)) :: Nil
+      case logical.Project(projectList, child) if !vectorizeEnabled =>
         execution.Project(projectList, planLater(child)) :: Nil
       case logical.Filter(condition, child) =>
         execution.Filter(condition, planLater(child)) :: Nil
@@ -361,7 +366,9 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
           generator, join = join, outer = outer, g.output, planLater(child)) :: Nil
       case logical.OneRowRelation =>
         execution.PhysicalRDD(Nil, singleRowRdd, "OneRowRelation") :: Nil
-      case r @ logical.Range(start, end, step, numSlices, output) =>
+      case r @ logical.Range(start, end, step, numSlices, output) if vectorizeEnabled =>
+        execution.vector.BatchRange(start, step, numSlices, r.numElements, output) :: Nil
+      case r @ logical.Range(start, end, step, numSlices, output) if !vectorizeEnabled =>
         execution.Range(start, step, numSlices, r.numElements, output) :: Nil
       case logical.RepartitionByExpression(expressions, child, nPartitions) =>
         execution.Exchange(HashPartitioning(

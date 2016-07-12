@@ -260,6 +260,23 @@ class CodeGenContext {
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
+  def getCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String): String = dt match {
+    case IntegerType => s"$rb.columns[$colIdx].intVector[$rowIdx]"
+    case LongType => s"$rb.columns[$colIdx].longVector[$rowIdx]"
+    case DoubleType => s"$rb.columns[$colIdx].doubleVector[$rowIdx]"
+    case StringType => s"$rb.columns[$colIdx].getString($rowIdx)"
+    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
+  }
+
+  def putCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String, value: String): String =
+    dt match {
+      case IntegerType => s"$rb.columns[$colIdx].intVector[$rowIdx] = $value"
+      case LongType => s"$rb.columns[$colIdx].longVector[$rowIdx] = $value"
+      case DoubleType => s"$rb.columns[$colIdx].doubleVector[$rowIdx] = $value"
+      case StringType => s"$rb.columns[$colIdx].putString($rowIdx, $value)"
+      case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
+    }
+
   /**
    * Returns the boxed type in Java.
    */
@@ -628,10 +645,27 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
   /** Binds an input expression to a given input schema */
   protected def bind(in: InType, inputSchema: Seq[Attribute]): InType
 
+  /** Generates the requested evaluator binding the given expression(s) to the inputSchema. */
+  def generate(expressions: InType, inputSchema: Seq[Attribute]): OutType =
+    generate(bind(expressions, inputSchema))
+
+  /** Generates the requested evaluator given already bound expression(s). */
+  def generate(expressions: InType): OutType = create(canonicalize(expressions))
+
+  /**
+   * Create a new codegen context for expression evaluator, used to store those
+   * expressions that don't support codegen
+   */
+  def newCodeGenContext(): CodeGenContext = {
+    new CodeGenContext
+  }
+}
+
+object CodeGenerator extends Logging {
   /**
    * Compile the Java source code into a Java class, using Janino.
    */
-  protected def compile(code: String): GeneratedClass = {
+  def compile(code: String): GeneratedClass = {
     cache.get(code)
   }
 
@@ -701,19 +735,4 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
           result
         }
       })
-
-  /** Generates the requested evaluator binding the given expression(s) to the inputSchema. */
-  def generate(expressions: InType, inputSchema: Seq[Attribute]): OutType =
-    generate(bind(expressions, inputSchema))
-
-  /** Generates the requested evaluator given already bound expression(s). */
-  def generate(expressions: InType): OutType = create(canonicalize(expressions))
-
-  /**
-   * Create a new codegen context for expression evaluator, used to store those
-   * expressions that don't support codegen
-   */
-  def newCodeGenContext(): CodeGenContext = {
-    new CodeGenContext
-  }
 }

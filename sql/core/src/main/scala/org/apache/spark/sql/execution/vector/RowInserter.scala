@@ -76,7 +76,7 @@ object GenerateRowGetter extends CodeGenerator[Seq[Expression], RowGetter] {
 
     logDebug(s"code for ${in.mkString(",")}:\n${CodeFormatter.format(code)}")
 
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[RowGetter]
   }
 }
@@ -133,7 +133,7 @@ object GenerateRowInserter extends CodeGenerator[Seq[Expression], RowInserter] {
 
     logDebug(s"code for ${in.mkString(",")}:\n${CodeFormatter.format(code)}")
 
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[RowInserter]
   }
 }

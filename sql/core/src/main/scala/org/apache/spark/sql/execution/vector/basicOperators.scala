@@ -18,15 +18,15 @@
 package org.apache.spark.sql.execution.vector
 
 import scala.collection.JavaConverters._
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.vector.{GenerateBatchPredicate, BatchProjection}
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchPredicate}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.metric.SQLMetrics
-import org.apache.spark.sql.execution.{UnaryNode, SparkPlan}
+import org.apache.spark.sql.execution.{LeafNode, SparkPlan, UnaryNode}
+import org.apache.spark.sql.types.LongType
 
 case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) extends UnaryNode {
 
@@ -100,4 +100,121 @@ case class BatchFilter(condition: Expression, child: SparkPlan) extends UnaryNod
   }
 
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
+}
+
+case class BatchRange(
+    start: Long,
+    step: Long,
+    numSlices: Int,
+    numElements: BigInt,
+    output: Seq[Attribute]) extends LeafNode {
+
+  override def outputsRowBatches: Boolean = true
+  override def outputsUnsafeRows: Boolean = false
+  override def canProcessRowBatches: Boolean = false
+  override def canProcessSafeRows: Boolean = false
+  override def canProcessUnsafeRows: Boolean = false
+
+  protected override def doExecute(): RDD[InternalRow] =
+    throw new UnsupportedOperationException(getClass.getName)
+
+  private val defaultCapacity =
+    sqlContext.sparkContext.getConf.
+      getInt(RowBatch.SPARK_SQL_VECTORIZE_BATCH_CAPACITY, RowBatch.DEFAULT_CAPACITY)
+
+  protected override def doBatchExecute(): RDD[RowBatch] = attachTree(this, "batchExecute") {
+    sqlContext
+      .sparkContext
+      .parallelize(0 until numSlices, numSlices)
+      .mapPartitionsWithIndex((i, _) => {
+        val partitionStart = (i * numElements) / numSlices * step + start
+        val partitionEnd = (((i + 1) * numElements) / numSlices) * step + start
+        def getSafeMargin(bi: BigInt): Long =
+          if (bi.isValidLong) {
+            bi.toLong
+          } else if (bi > 0) {
+            Long.MaxValue
+          } else {
+            Long.MinValue
+          }
+        val safePartitionStart = getSafeMargin(partitionStart)
+        val safePartitionEnd = getSafeMargin(partitionEnd)
+
+        val rb = RowBatch.create((LongType :: Nil).toArray, defaultCapacity)
+
+//        new Iterator[InternalRow] {
+//          private[this] var number: Long = safePartitionStart
+//          private[this] var overflow: Boolean = false
+//
+//          override def hasNext =
+//            if (!overflow) {
+//              if (step > 0) {
+//                number < safePartitionEnd
+//              } else {
+//                number > safePartitionEnd
+//              }
+//            } else false
+//
+//          override def next() = {
+//            val ret = number
+//            number += step
+//            if (number < ret ^ step < 0) {
+//              // we have Long.MaxValue + Long.MaxValue < Long.MaxValue
+//              // and Long.MinValue + Long.MinValue > Long.MinValue, so iff the step causes a step
+//              // back, we are pretty sure that we have an overflow.
+//              overflow = true
+//            }
+//
+//            unsafeRow.setLong(0, ret)
+//            unsafeRow
+//          }
+//        }
+
+        new Iterator[RowBatch] {
+          private[this] var number: Long = safePartitionStart
+          private[this] var overflow: Boolean = false
+
+          override def hasNext: Boolean =
+            if (!overflow) {
+              if (step > 0) {
+                number < safePartitionEnd
+              } else {
+                number > safePartitionEnd
+              }
+            } else false
+
+          override def next(): RowBatch = {
+            rb.size = 0;
+
+            if (step > 0) {
+              var i = 0
+              while (number < safePartitionEnd && i < rb.capacity && !overflow) {
+                val ret = number
+                rb.columns(0).longVector(i) = number
+                number += step
+                if (number < ret ^ step < 0) {
+                  overflow = true
+                }
+                i += 1
+              }
+              rb.size = i
+              rb
+            } else {
+              var i = 0
+              while (number > safePartitionEnd && i < rb.capacity && !overflow) {
+                val ret = number
+                rb.columns(0).longVector(i) = number
+                number += step
+                if (number < ret ^ step < 0) {
+                  overflow = true
+                }
+                i += 1
+              }
+              rb.size = i
+              rb
+            }
+          }
+        }
+      })
+  }
 }

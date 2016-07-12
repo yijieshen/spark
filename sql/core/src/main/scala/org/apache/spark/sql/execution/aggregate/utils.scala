@@ -59,6 +59,7 @@ object Utils {
     aggregateAttributes: Seq[Attribute] = Nil,
     initialInputBufferOffset: Int = 0,
     resultExpressions: Seq[NamedExpression] = Nil,
+    vectorizeHMEnabled: Boolean,
     child: SparkPlan): SparkPlan = {
     val usesTungstenAggregate = TungstenAggregate.supportsAggregate(
       aggregateExpressions.flatMap(_.aggregateFunction.aggBufferAttributes))
@@ -70,6 +71,7 @@ object Utils {
         aggregateAttributes = aggregateAttributes,
         initialInputBufferOffset = initialInputBufferOffset,
         resultExpressions = resultExpressions,
+        vectorizeHMEnabled = vectorizeHMEnabled,
         child = child)
     } else {
       throw new NotImplementedException
@@ -113,7 +115,8 @@ object Utils {
       aggregateFunctionToAttribute: Map[(AggregateFunction, Boolean), Attribute],
       resultExpressions: Seq[NamedExpression],
       child: SparkPlan,
-      vectorizeAGGEnabled: Boolean): Seq[SparkPlan] = {
+      vectorizeAGGEnabled: Boolean,
+      vectorizeHMEnabled: Boolean): Seq[SparkPlan] = {
     // Check if we can use TungstenAggregate.
 
     // 1. Create an Aggregate Operator for partial aggregations.
@@ -134,6 +137,7 @@ object Utils {
         aggregateAttributes = partialAggregateAttributes,
         initialInputBufferOffset = 0,
         resultExpressions = partialResultExpressions,
+        vectorizeHMEnabled,
         child = child)
     } else {
       createAggregate(
@@ -173,7 +177,8 @@ object Utils {
       aggregateFunctionToAttribute: Map[(AggregateFunction, Boolean), Attribute],
       resultExpressions: Seq[NamedExpression],
       child: SparkPlan,
-      vectorizeAGGEnabled: Boolean): Seq[SparkPlan] = {
+      vectorizeAGGEnabled: Boolean,
+      vectorizeHMEnabled: Boolean): Seq[SparkPlan] = {
 
     // functionsWithDistinct is guaranteed to be non-empty. Even though it may contain more than one
     // DISTINCT aggregate function, all of those functions will have the same column expressions.
@@ -204,6 +209,7 @@ object Utils {
           aggregateAttributes = aggregateAttributes,
           resultExpressions = groupingAttributes ++ distinctAttributes ++
             aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes),
+          vectorizeHMEnabled = vectorizeHMEnabled,
           child = child)
       } else {
         createAggregate(

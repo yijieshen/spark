@@ -166,7 +166,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
       }
     """
     logDebug(s"Generated Ordering: ${CodeFormatter.format(code)}")
-    compile(code).generate(ctx.references.toArray).asInstanceOf[BatchOrdering]
+    CodeGenerator.compile(code).generate(ctx.references.toArray).asInstanceOf[BatchOrdering]
   }
 }
 

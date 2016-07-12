@@ -81,7 +81,7 @@ object GenerateBatchInsertion extends CodeGenerator[Seq[Expression], BatchInsert
       }
     """
 
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[BatchInsertion]
   }
 }

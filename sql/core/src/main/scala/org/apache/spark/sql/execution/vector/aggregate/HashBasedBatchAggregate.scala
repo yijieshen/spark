@@ -34,6 +34,7 @@ case class HashBasedBatchAggregate(
     aggregateAttributes: Seq[Attribute],
     initialInputBufferOffset: Int,
     resultExpressions: Seq[NamedExpression],
+    vectorizeHMEnabled: Boolean,
     child: SparkPlan) extends UnaryNode {
 
   private[this] val aggregateBufferAttributes = {
@@ -98,6 +99,7 @@ case class HashBasedBatchAggregate(
             iter,
             defaultBatchCapacity,
             testFallbackStartsAt,
+            vectorizeHMEnabled,
             numInputRows,
             numOutputRows,
             dataSize,

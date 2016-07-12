@@ -107,7 +107,7 @@ object GenerateBatchBufferUpdate extends CodeGenerator[Seq[Expression], BatchBuf
         }
       }
     """
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[BatchBufferUpdate]
   }
 }

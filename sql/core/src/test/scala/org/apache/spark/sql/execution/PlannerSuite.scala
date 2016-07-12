@@ -55,7 +55,7 @@ class PlannerSuite extends SharedSQLContext {
     val planner = sqlContext.planner
     import planner._
     val query = testData.unionAll(testData).unionAll(testData).logicalPlan
-    val planned = BasicOperators(query).head
+    val planned = BasicOperators(this.sqlContext)(query).head
     val logicalUnions = query collect { case u: logical.Union => u }
     val physicalUnions = planned collect { case u: execution.Union => u }
 

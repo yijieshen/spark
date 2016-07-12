@@ -19,9 +19,9 @@ package org.apache.spark.sql.catalyst.expressions.vector.aggregate
 
 import org.apache.spark.sql.catalyst.expressions.Cast
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction
-import org.apache.spark.sql.catalyst.expressions.codegen.{GeneratedBatchExpressionCode, CodeGenContext}
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedBatchExpressionCode}
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchCast, BatchExpression}
-import org.apache.spark.sql.types.DoubleType
+import org.apache.spark.sql.types.{DoubleType, LongType}
 
 abstract class BatchAggregate {
   /**
@@ -47,6 +47,14 @@ abstract class BatchAggregate {
     ve.copy(s"/* ${this.toCommentSafeString} */\n" + ve.code.trim)
   }
 
+  def genVectorized(ctx: CodeGenContext): GeneratedBatchExpressionCode = {
+    val primitive = ctx.freshName("primitive")
+    val ve = GeneratedBatchExpressionCode("", primitive)
+    ve.code = genVectorizedCode(ctx, ve)
+    // Add `this` in the comment.
+    ve.copy(s"/* ${this.toCommentSafeString} */\n" + ve.code.trim)
+  }
+
   /**
     * Returns Java source code that can be compiled to evaluate this expression.
     * The default behavior is to call the eval method of the expression. Concrete expression
@@ -57,6 +65,8 @@ abstract class BatchAggregate {
     * @return Java source code
     */
   protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String
+
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String
 }
 
 case class BatchCount(
@@ -68,6 +78,70 @@ case class BatchCount(
   assert(children.size == 1, "only support single column count for now")
 
   val child = children(0)
+
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+
+    val bufferUpdate: String = {
+      s"""
+      if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+          }
+        }
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else if (${eval.value}.noNulls) { // not repeating & no nulls
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+          }
+        }
+      } else {
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+                s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.putCell(LongType, "hm", bufferOffset, "slots[i]",
+                s"${ctx.getCell(LongType, "hm", bufferOffset, "slots[i]")} + 1L")};
+            }
+          }
+        }
+      }
+    """
+    }
+
+    s"""
+      ${eval.code}
+      int $batchSize = currentProbe.size;
+      int[] $sel = currentProbe.selected;
+      $bufferUpdate
+    """
+  }
 
   protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval = child.gen(ctx)
@@ -170,6 +244,99 @@ case class BatchAverage(
   private val castedChild = child.dataType match {
     case DoubleType => child
     case _ => BatchCast(child, Cast(child.underlyingExpr, DoubleType))
+  }
+
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = castedChild.gen(ctx)
+    val countOffset = bufferOffset + 1
+
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+
+    val bufferUpdate: String = {
+      s"""
+      if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+        final ${ctx.javaType(DoubleType)} value = $childV[0];
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(DoubleType)} v =
+              ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? value : value + v;
+            ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+            ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(DoubleType)} v =
+              ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? value : value + v;
+            ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+            ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+          }
+        }
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else if (${eval.value}.noNulls) { // not repeating & no nulls
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(DoubleType)} v =
+              ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+            ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+            ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(DoubleType)} v =
+              ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+            ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+            ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+              s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+          }
+        }
+      } else {
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.javaType(DoubleType)} v =
+                ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+              v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+              ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+              ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+                s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.javaType(DoubleType)} v =
+                ${ctx.getCell(DoubleType, "hm", bufferOffset, "slots[i]")};
+              v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+              ${ctx.putCell(DoubleType, "hm", bufferOffset, "slots[i]", "v")};
+              ${ctx.putCell(LongType, "hm", countOffset, "slots[i]",
+                s"${ctx.getCell(LongType, "hm", countOffset, "slots[i]")} + 1L")};
+            }
+          }
+        }
+      }
+    """
+    }
+
+    s"""
+      ${eval.code}
+      int $batchSize = currentProbe.size;
+      int[] $sel = currentProbe.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
   }
 
   protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
@@ -310,6 +477,86 @@ case class BatchSum(
 
   val dataType = child.dataType
 
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+
+    val bufferUpdate: String = {
+      s"""
+      if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+        final ${ctx.javaType(dataType)} value = $childV[0];
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(dataType)} v =
+              ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? value : value + v;
+            ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(dataType)} v =
+              ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? value : value + v;
+            ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+          }
+        }
+      } else if (${eval.value}.isRepeating) { // repeating & null
+        // do nothing here since it's all null
+      } else if (${eval.value}.noNulls) { // not repeating & no nulls
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            ${ctx.javaType(dataType)} v =
+              ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+            ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            ${ctx.javaType(dataType)} v =
+              ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+            v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+            ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+          }
+        }
+      } else {
+        if (currentProbe.selectedInUse) {
+          for (int j = 0; j < $batchSize; j ++) {
+            int i = $sel[j];
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.javaType(dataType)} v =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+              ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+            }
+          }
+        } else {
+          for (int i = 0; i < $batchSize; i ++) {
+            if (!${eval.value}.isNull[i]) {
+              ${ctx.javaType(dataType)} v =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              v = hm.columns[$bufferOffset].isNull[slots[i]] ? $childV[i] : $childV[i] + v;
+              ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "v")};
+            }
+          }
+        }
+      }
+    """
+    }
+
+    s"""
+      ${eval.code}
+      int $batchSize = currentProbe.size;
+      int[] $sel = currentProbe.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
+  }
+
   protected def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval = child.gen(ctx)
 
@@ -448,6 +695,101 @@ case class BatchMax(
     noGroupingExpr: Boolean) extends BatchAggregate {
 
   val dataType = child.dataType
+
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+
+    val bufferUpdate: String = {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          final ${ctx.javaType(dataType)} value = $childV[0];
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          }
+        } else if (${eval.value}.isRepeating) {
+          // repeating && null, do nothing here
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "value", "cur")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          }
+        } else { // not repeating & has null
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+                if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                    (${ctx.genGreater(dataType, "value", "cur")})) {
+                  ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+                }
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+                if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                    (${ctx.genGreater(dataType, "value", "cur")})) {
+                  ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+                }
+              }
+            }
+          }
+        }
+      """
+    }
+
+    s"""
+      ${eval.code}
+      int $batchSize = currentProbe.size;
+      int[] $sel = currentProbe.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
+  }
 
   override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval = child.gen(ctx)
@@ -631,6 +973,102 @@ case class BatchMin(
   noGroupingExpr: Boolean) extends BatchAggregate {
 
   val dataType = child.dataType
+
+
+  protected def genVectorizedCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val eval = child.gen(ctx)
+    val batchSize = ctx.freshName("validSize")
+    val sel = ctx.freshName("sel")
+    val childV = ctx.freshName("childV")
+
+    val bufferUpdate: String = {
+      s"""
+        if (${eval.value}.isRepeating && ${eval.value}.noNulls) {
+          final ${ctx.javaType(dataType)} value = $childV[0];
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          }
+        } else if (${eval.value}.isRepeating) {
+          // repeating && null, do nothing here
+        } else if (${eval.value}.noNulls) { // not repeating & no nulls
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              ${ctx.javaType(dataType)} value = $childV[i];
+              ${ctx.javaType(dataType)} cur =
+                ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+              if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                  (${ctx.genGreater(dataType, "cur", "value")})) {
+                ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+              }
+            }
+          }
+        } else { // not repeating & has null
+          if (currentProbe.selectedInUse) {
+            for (int j = 0; j < $batchSize; j ++) {
+              int i = $sel[j];
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+                if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                    (${ctx.genGreater(dataType, "cur", "value")})) {
+                  ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+                }
+              }
+            }
+          } else {
+            for (int i = 0; i < $batchSize; i ++) {
+              if (!${eval.value}.isNull[i]) {
+                ${ctx.javaType(dataType)} value = $childV[i];
+                ${ctx.javaType(dataType)} cur =
+                  ${ctx.getCell(dataType, "hm", bufferOffset, "slots[i]")};
+                if (hm.columns[$bufferOffset].isNull[slots[i]] ||
+                    (${ctx.genGreater(dataType, "cur", "value")})) {
+                  ${ctx.putCell(dataType, "hm", bufferOffset, "slots[i]", "value")};
+                }
+              }
+            }
+          }
+        }
+      """
+    }
+
+    s"""
+      ${eval.code}
+      int $batchSize = currentProbe.size;
+      int[] $sel = currentProbe.selected;
+      ${ctx.vectorArrayType(dataType)} $childV = ${eval.value}.${ctx.vectorName(dataType)};
+      $bufferUpdate
+    """
+  }
 
   override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
     val eval = child.gen(ctx)

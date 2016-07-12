@@ -85,7 +85,7 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
       }
     """
 
-    val c = compile(code)
+    val c = CodeGenerator.compile(code)
     c.generate(ctx.references.toArray).asInstanceOf[BatchRead]
   }
 }

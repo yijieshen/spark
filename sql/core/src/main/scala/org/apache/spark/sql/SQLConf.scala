@@ -467,6 +467,12 @@ private[spark] object SQLConf {
     doc = "When true, SQL query would execute agg in vectorized mode when possible"
   )
 
+  val VECTORIZE_HM_ENABLED = booleanConf("spark.sql.vectorize.hm.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would use vectorized hashmap when possible"
+  )
+
   val VECTORIZE_SHUFFLE_ENABLED = booleanConf("spark.sql.vectorize.shuffle.enabled",
     defaultValue = Some(false),
     isPublic = true,
@@ -609,6 +615,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
   private[spark] def vectorizedBatchCapacity: Int = getConf(VECTORIZE_BATCH_CAPACITY)
 
   private[spark] def vectorizedAGGEnabled: Boolean = getConf(VECTORIZE_AGG_ENABLED)
+
+  private[spark] def vectorizedHMEnabled: Boolean = getConf(VECTORIZE_HM_ENABLED)
 
   private[spark] def vectorizedSortEnabled: Boolean = getConf(VECTORIZE_SORT_ENABLED)
 
