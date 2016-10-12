@@ -255,6 +255,25 @@ public class ColumnVector implements Serializable {
     return notNullCount;
   }
 
+  // TODO null values are not handled for the moment
+  public void copyInt(ColumnVector src, int from, int to) {
+    intVector[to] = src.intVector[from];
+  }
+
+  public void copyLong(ColumnVector src, int from, int to) {
+    longVector[to] = src.longVector[from];
+  }
+
+  public void copyDouble(ColumnVector src, int from, int to) {
+    doubleVector[to] = src.doubleVector[from];
+  }
+
+  public void copyString(ColumnVector src, int from, int to) {
+    bytesVector[to] = src.bytesVector[from].clone();
+    starts[to] = src.starts[from];
+    lengths[to] = src.lengths[from];
+  }
+
   public void putIntCV(ColumnVector src, Integer[] positions, int from, int length) {
     values = ensureFreeSpace(values, length * 4);
     if (src.noNulls) {

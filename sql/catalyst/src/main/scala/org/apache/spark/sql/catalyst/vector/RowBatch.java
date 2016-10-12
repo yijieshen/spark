@@ -49,6 +49,8 @@ public class RowBatch implements Serializable {
   public int startIdx;
   public int numRows;
 
+  public int rowIdx = 0; // row idx while iterate this batch
+
   public BatchWrite writer;
   public BatchRead reader;
 
@@ -141,6 +143,14 @@ public class RowBatch implements Serializable {
     for (ColumnVector col : columns) {
       col.reset();
     }
+  }
+
+  public long memoryFootprintInBytes() {
+    return 0L;
+  }
+
+  public void free() {
+
   }
 
   public void writeToStream(WritableByteChannel out) throws IOException {

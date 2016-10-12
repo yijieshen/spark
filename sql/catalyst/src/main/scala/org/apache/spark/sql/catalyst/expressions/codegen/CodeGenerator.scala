@@ -147,7 +147,7 @@ class CodeGenContext {
   /** The variable name of the input row in generated code. */
   final val INPUT_ROW = "i"
 
-  final val INPUT_ROWBATCH = "rb"
+  var INPUT_ROWBATCH = "rb"
 
   final val BUFFERS = "buffers"
 

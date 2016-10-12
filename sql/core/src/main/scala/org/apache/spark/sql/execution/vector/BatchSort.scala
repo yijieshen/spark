@@ -23,10 +23,12 @@ import org.apache.spark.{InternalAccumulator, SparkEnv, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrderings, BatchProjection, GenerateBatchOrdering}
+import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrderings, BatchProjection, GenerateBatchOrdering, GenerateInterBatchOrdering}
 import org.apache.spark.sql.catalyst.plans.physical.{Distribution, OrderedDistribution, UnspecifiedDistribution}
+import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.{SortPrefixUtils, SparkPlan, UnaryNode}
 import org.apache.spark.sql.execution.metric.SQLMetrics
+import org.apache.spark.sql.execution.vector.sort.ExternalRowBatchSorter
 
 /**
   *
@@ -41,10 +43,11 @@ case class BatchSort(
     child: SparkPlan,
     testSpillFrequency: Int = 0) extends UnaryNode {
 
-  override def outputsUnsafeRows: Boolean = true
+  override def outputsUnsafeRows: Boolean = false
   override def canProcessUnsafeRows: Boolean = false
   override def canProcessSafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
 
   override def output: Seq[Attribute] = child.output
 
@@ -58,6 +61,40 @@ case class BatchSort(
     "spillSize" -> SQLMetrics.createSizeMetric(sparkContext, "spill size"))
 
   private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
+  override protected def doBatchExecute(): RDD[RowBatch] = {
+    val childOutput = child.output
+
+    val dataSize = longMetric("dataSize")
+    val spillSize = longMetric("spillSize")
+
+    child.batchExecute().mapPartitionsInternal { iter =>
+      val innerBatchComparator = GenerateBatchOrdering.generate(
+        sortOrder, childOutput, defaultBatchCapacity)
+      val interBatchComparator = GenerateInterBatchOrdering.generate(
+        sortOrder, childOutput, defaultBatchCapacity)
+
+      val sorter = new ExternalRowBatchSorter(
+        childOutput, innerBatchComparator, interBatchComparator)
+
+      if (testSpillFrequency > 0) {
+        sorter.setTestSpillFrequency(testSpillFrequency)
+      }
+
+      // Remember spill data size of this task before execute this operator so that we can
+      // figure out how many bytes we spilled for this operator.
+      val spillSizeBefore = TaskContext.get().taskMetrics().memoryBytesSpilled
+
+      val sortedIterator = sorter.sort(iter)
+
+      dataSize += sorter.peakMemoryUsage()
+      spillSize += TaskContext.get().taskMetrics().memoryBytesSpilled - spillSizeBefore
+
+      TaskContext.get().internalMetricsToAccumulators(
+        InternalAccumulator.PEAK_EXECUTION_MEMORY).add(sorter.peakMemoryUsage)
+      sortedIterator
+    }
+  }
 
   override protected def doExecute(): RDD[InternalRow] = {
     val schema = child.schema
