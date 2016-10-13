@@ -146,11 +146,20 @@ public class RowBatch implements Serializable {
   }
 
   public long memoryFootprintInBytes() {
-    return 0L;
+    long mem = 6 * 4 + 3 * 1 + 4 * 8; // fields size
+    mem += capacity * 4 + 32 + capacity * 8 + 32;
+    for (ColumnVector cv: columns) {
+      mem += cv.memoryFootprintInBytes();
+    }
+    return mem;
   }
 
   public void free() {
-
+    selected = null;
+    sorted = null;
+    for (ColumnVector cv: columns) {
+      cv.free();
+    }
   }
 
   public void writeToStream(WritableByteChannel out) throws IOException {

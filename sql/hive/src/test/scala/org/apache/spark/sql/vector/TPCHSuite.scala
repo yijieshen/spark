@@ -576,7 +576,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
     }
   }
 
-  test("Query 20") {
+  ignore("Query 20") {
     withSQLConf(
       SQLConf.VECTORIZE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",

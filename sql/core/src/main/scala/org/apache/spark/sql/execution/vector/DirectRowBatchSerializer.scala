@@ -32,16 +32,18 @@ import org.apache.spark.sql.types.DataType
 
 class DirectRowBatchSerializer(
     schema: Seq[Attribute],
-    defaultCapacity: Int) extends Serializer with Serializable {
+    defaultCapacity: Int,
+    shouldReuseBatch: Boolean) extends Serializer with Serializable {
 
   override def newInstance(): SerializerInstance =
-    new DirectRowBatchSerializerInstance(schema, defaultCapacity)
+    new DirectRowBatchSerializerInstance(schema, defaultCapacity, shouldReuseBatch)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
 private class DirectRowBatchSerializerInstance(
     schema: Seq[Attribute],
-    defaultCapacity: Int) extends SerializerInstance {
+    defaultCapacity: Int,
+    shouldReuseBatch: Boolean) extends SerializerInstance {
 
   /**
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
@@ -95,80 +97,145 @@ private class DirectRowBatchSerializerInstance(
   }
 
   override def deserializeStream(in: InputStream): DeserializationStream = {
-    new DeserializationStream {
-      private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
-      private[this] var rowBatch: RowBatch =
-        RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
-      private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
-      private[this] val reader: BatchRead = GenerateBatchRead.generate(schema, defaultCapacity)
-      private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
-      rowBatch.reader = reader
+    if (shouldReuseBatch) {
+      new DeserializationStream {
+        private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
+        private[this] var rowBatch: RowBatch =
+          RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
+        private[this] var batchTuple: (Int, RowBatch) = (0, rowBatch)
+        private[this] val reader: BatchRead = GenerateBatchRead.generate(schema, defaultCapacity)
+        private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
+        rowBatch.reader = reader
 
-      private[this] val EOF: Int = -1
+        private[this] val EOF: Int = -1
 
-      override def asKeyValueIterator: Iterator[(Int, RowBatch)] = {
-        new Iterator[(Int, RowBatch)] {
+        override def asKeyValueIterator: Iterator[(Int, RowBatch)] = {
+          new Iterator[(Int, RowBatch)] {
 
-          private[this] def readSize(): Int = try {
-            dIn.readInt()
-          } catch {
-            case e: EOFException =>
-              dIn.close()
-              EOF
-          }
-
-          private[this] var nextBatchSize: Int = readSize()
-          override def hasNext: Boolean = nextBatchSize != EOF
-
-          override def next(): (Int, RowBatch) = {
-            if (rowBatch.capacity < nextBatchSize) {
-              rowBatch = RowBatch.create(schema.map(_.dataType).toArray, nextBatchSize)
-              rowBatch.reader = reader
+            private[this] def readSize(): Int = try {
+              dIn.readInt()
+            } catch {
+              case e: EOFException =>
+                dIn.close()
+                EOF
             }
-            rowBatch.reset(false)
-            while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
-              readSize() // read column num
-              rowBatch.appendFromStream(rbc, nextBatchSize)
-              nextBatchSize = readSize()
-            }
-            if (nextBatchSize == EOF) { // We are returning the last row in this stream
-              dIn.close()
-              val _batchTuple = batchTuple
-              // Null these out so that the byte array can be garbage collected once the entire
-              // iterator has been consumed
-              rowBatch = null
-              batchTuple = null
-              _batchTuple
-            } else {
-              batchTuple
+
+            private[this] var nextBatchSize: Int = readSize()
+            override def hasNext: Boolean = nextBatchSize != EOF
+
+            override def next(): (Int, RowBatch) = {
+              if (rowBatch.capacity < nextBatchSize) {
+                rowBatch = RowBatch.create(schema.map(_.dataType).toArray, nextBatchSize)
+                rowBatch.reader = reader
+              }
+              rowBatch.reset(false)
+              while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
+                readSize() // read column num
+                rowBatch.appendFromStream(rbc, nextBatchSize)
+                nextBatchSize = readSize()
+              }
+              if (nextBatchSize == EOF) { // We are returning the last row in this stream
+                dIn.close()
+                val _batchTuple = batchTuple
+                // Null these out so that the byte array can be garbage collected once the entire
+                // iterator has been consumed
+                rowBatch = null
+                batchTuple = null
+                _batchTuple
+              } else {
+                batchTuple
+              }
             }
           }
         }
-      }
 
-      override def asIterator: Iterator[Any] = {
-        // This method is never called by shuffle code.
-        throw new UnsupportedOperationException
-      }
+        override def asIterator: Iterator[Any] = {
+          // This method is never called by shuffle code.
+          throw new UnsupportedOperationException
+        }
 
-      override def readKey[T: ClassTag](): T = {
-        // We skipped serialization of the key in writeKey(), so just return a dummy value since
-        // this is going to be discarded anyways.
-        null.asInstanceOf[T]
-      }
+        override def readKey[T: ClassTag](): T = {
+          // We skipped serialization of the key in writeKey(), so just return a dummy value since
+          // this is going to be discarded anyways.
+          null.asInstanceOf[T]
+        }
 
-      override def readValue[T: ClassTag](): T = {
-        throw new UnsupportedOperationException
-      }
+        override def readValue[T: ClassTag](): T = {
+          throw new UnsupportedOperationException
+        }
 
-      override def readObject[T: ClassTag](): T = {
-        // This method is never called by shuffle code.
-        throw new UnsupportedOperationException
-      }
+        override def readObject[T: ClassTag](): T = {
+          // This method is never called by shuffle code.
+          throw new UnsupportedOperationException
+        }
 
-      override def close(): Unit = {
-        dIn.close()
-        rbc.close()
+        override def close(): Unit = {
+          dIn.close()
+          rbc.close()
+        }
+      }
+    } else { // shouldn't reuse row batch
+      new DeserializationStream {
+        private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
+        private[this] var rowBatch: RowBatch = null
+        private[this] val reader: BatchRead = GenerateBatchRead.generate(schema, defaultCapacity)
+        private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
+
+        private[this] val EOF: Int = -1
+
+        override def asKeyValueIterator: Iterator[(Int, RowBatch)] = {
+          new Iterator[(Int, RowBatch)] {
+
+            private[this] def readSize(): Int = try {
+              dIn.readInt()
+            } catch {
+              case e: EOFException =>
+                dIn.close()
+                EOF
+            }
+
+            private[this] var nextBatchSize: Int = readSize()
+            override def hasNext: Boolean = nextBatchSize != EOF
+
+            override def next(): (Int, RowBatch) = {
+              rowBatch = RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
+              rowBatch.reader = reader
+              rowBatch.reset(false)
+
+              while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
+                readSize() // read column num
+                rowBatch.appendFromStream(rbc, nextBatchSize)
+                nextBatchSize = readSize()
+              }
+              (0, rowBatch)
+            }
+          }
+        }
+
+        override def asIterator: Iterator[Any] = {
+          // This method is never called by shuffle code.
+          throw new UnsupportedOperationException
+        }
+
+        override def readKey[T: ClassTag](): T = {
+          // We skipped serialization of the key in writeKey(), so just return a dummy value since
+          // this is going to be discarded anyways.
+          null.asInstanceOf[T]
+        }
+
+        override def readValue[T: ClassTag](): T = {
+          throw new UnsupportedOperationException
+        }
+
+        override def readObject[T: ClassTag](): T = {
+          // This method is never called by shuffle code.
+          throw new UnsupportedOperationException
+        }
+
+        override def close(): Unit = {
+          dIn.close()
+          rbc.close()
+        }
       }
     }
   }

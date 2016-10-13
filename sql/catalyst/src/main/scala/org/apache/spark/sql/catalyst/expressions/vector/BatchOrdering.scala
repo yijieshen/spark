@@ -70,7 +70,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
             } else if (${eval.value}.noNulls) {
               $pa.update($childV[a], ${eval.value}.starts[a], ${eval.value}.lengths[a]);
               $pb.update($childV[b], ${eval.value}.starts[b], ${eval.value}.lengths[b]);
-              int comp = ${ctx.genComp(dt, pa, pb)};
+              comp = ${ctx.genComp(dt, pa, pb)};
               if (comp != 0) {
                 return ${if (asc) "comp" else "-comp"};
               }
@@ -84,7 +84,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
               } else {
                 $pa.update($childV[a], ${eval.value}.starts[a], ${eval.value}.lengths[a]);
                 $pb.update($childV[b], ${eval.value}.starts[b], ${eval.value}.lengths[b]);
-                int comp = ${ctx.genComp(dt, pa, pb)};
+                comp = ${ctx.genComp(dt, pa, pb)};
                 if (comp != 0) {
                   return ${if (asc) "comp" else "-comp"};
                 }
@@ -102,7 +102,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
             } else if (${eval.value}.noNulls) {
               $pa = $childV[a];
               $pb = $childV[b];
-              int comp = ${ctx.genComp(dt, pa, pb)};
+              comp = ${ctx.genComp(dt, pa, pb)};
               if (comp != 0) {
                 return ${if (asc) "comp" else "-comp"};
               }
@@ -116,7 +116,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
               } else {
                 $pa = $childV[a];
                 $pb = $childV[b];
-                int comp = ${ctx.genComp(dt, pa, pb)};
+                comp = ${ctx.genComp(dt, pa, pb)};
                 if (comp != 0) {
                   return ${if (asc) "comp" else "-comp"};
                 }
@@ -160,6 +160,7 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
           RowBatch ${ctx.INPUT_ROWBATCH} = current;
           int a = ax;
           int b = bx;
+          int comp;
           $comparisons
           return 0;
         }

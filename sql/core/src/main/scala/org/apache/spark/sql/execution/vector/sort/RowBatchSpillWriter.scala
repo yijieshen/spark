@@ -35,7 +35,8 @@ case class RowBatchSpillWriter(
 
   val (blockId: BlockId, file: File) = blockManager.diskBlockManager.createTempLocalBlock()
 
-  val serializerInstance = (new DirectRowBatchSerializer(output, defaultCapacity)).newInstance()
+  val serializerInstance =
+    (new DirectRowBatchSerializer(output, defaultCapacity, true)).newInstance()
   var writer = blockManager.getDiskWriter(
     blockId, file, serializerInstance, 1024 * 1024, writeMetrics)
 

@@ -118,6 +118,7 @@ private[sql] object EnsureRowFormats extends Rule[SparkPlan] {
             c match {
               case c if (!c.outputsUnsafeRows && !c.outputsRowBatches) => ConvertToUnsafe(c)
               case c if (c.outputsRowBatches) => ConvertToUnsafe(DissembleFromRowBatch(c))
+              case c => c
             }
           }
         }

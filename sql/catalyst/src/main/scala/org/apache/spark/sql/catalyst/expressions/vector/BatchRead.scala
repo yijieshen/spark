@@ -50,13 +50,29 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
     val columnsRead = schema.zipWithIndex.map { case (dt, idx) =>
       dt match {
         case IntegerType =>
-          s"rb.columns[$idx].appendFromIntStream(in, startIdx, numRows);"
+          s"""
+            rb.columns[$idx].nulls = this.nulls;
+            rb.columns[$idx].values = this.values;
+            rb.columns[$idx].appendFromIntStream(in, startIdx, numRows);
+          """
         case LongType =>
-          s"rb.columns[$idx].appendFromLongStream(in, startIdx, numRows);"
+          s"""
+            rb.columns[$idx].nulls = this.nulls;
+            rb.columns[$idx].values = this.values;
+            rb.columns[$idx].appendFromLongStream(in, startIdx, numRows);
+          """
         case DoubleType =>
-          s"rb.columns[$idx].appendFromDoubleStream(in, startIdx, numRows);"
+          s"""
+            rb.columns[$idx].nulls = this.nulls;
+            rb.columns[$idx].values = this.values;
+            rb.columns[$idx].appendFromDoubleStream(in, startIdx, numRows);
+          """
         case StringType =>
-          s"rb.columns[$idx].appendFromStringStream(in, startIdx, numRows);"
+          s"""
+            rb.columns[$idx].nulls = this.nulls;
+            rb.columns[$idx].values = this.values;
+            rb.columns[$idx].appendFromStringStream(in, startIdx, numRows);
+          """
         case _ =>
           "Not implemented yet"
       }
@@ -70,12 +86,18 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
 
       class SpecificBatchRead extends ${classOf[BatchRead].getName} {
         private $exprType[] expressions;
+        private java.nio.ByteBuffer nulls;
+        private java.nio.ByteBuffer values;
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
         public SpecificBatchRead($exprType[] expressions) {
           this.expressions = expressions;
           ${initMutableStates(ctx)}
+          nulls = java.nio.ByteBuffer.allocate($defaultCapacity * 4);
+          nulls.order(java.nio.ByteOrder.nativeOrder());
+          values = java.nio.ByteBuffer.allocate($defaultCapacity * 16);
+          values.order(java.nio.ByteOrder.nativeOrder());
         }
 
         public void append(java.nio.channels.ReadableByteChannel in,

@@ -17,8 +17,6 @@
 
 package org.apache.spark.sql.execution.vector
 
-import java.util.Comparator
-
 import org.apache.spark.{InternalAccumulator, SparkEnv, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -75,7 +73,7 @@ case class BatchSort(
         sortOrder, childOutput, defaultBatchCapacity)
 
       val sorter = new ExternalRowBatchSorter(
-        childOutput, innerBatchComparator, interBatchComparator)
+        childOutput, defaultBatchCapacity, innerBatchComparator, interBatchComparator)
 
       if (testSpillFrequency > 0) {
         sorter.setTestSpillFrequency(testSpillFrequency)

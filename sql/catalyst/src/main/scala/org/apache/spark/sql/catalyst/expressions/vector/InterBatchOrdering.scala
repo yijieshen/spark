@@ -65,7 +65,7 @@ object GenerateInterBatchOrdering extends CodeGenerator[Seq[SortOrder], InterBat
 
             $pa.update($childLV[li], ${evalL.value}.starts[li], ${evalL.value}.lengths[li]);
             $pb.update($childRV[ri], ${evalR.value}.starts[ri], ${evalR.value}.lengths[ri]);
-            int comp = ${ctx.genComp(dt, pa, pb)};
+            comp = ${ctx.genComp(dt, pa, pb)};
             if (comp != 0) {
               return ${if (asc) "comp" else "-comp"};
             }
@@ -80,7 +80,7 @@ object GenerateInterBatchOrdering extends CodeGenerator[Seq[SortOrder], InterBat
             ${ctx.javaType(dt)} $pb;
             $pa = $childLV[li];
             $pb = $childRV[ri];
-            int comp = ${ctx.genComp(dt, pa, pb)};
+            comp = ${ctx.genComp(dt, pa, pb)};
             if (comp != 0) {
               return ${if (asc) "comp" else "-comp"};
             }
@@ -105,16 +105,16 @@ object GenerateInterBatchOrdering extends CodeGenerator[Seq[SortOrder], InterBat
       class SpecificInterBatchOrdering extends ${classOf[InterBatchOrdering].getName} {
 
         private $exprType[] expressions;
-        private RowBatch current;
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
-        public SpecificBatchOrdering($exprType[] expr) {
+        public SpecificInterBatchOrdering($exprType[] expr) {
           expressions = expr;
           ${initMutableStates(ctx)}
         }
 
         public int compare(RowBatch lb, int li, RowBatch rb, int ri) {
+          int comp;
           $comparisons
           return 0;
         }

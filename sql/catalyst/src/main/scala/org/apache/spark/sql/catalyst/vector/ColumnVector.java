@@ -595,4 +595,39 @@ public class ColumnVector implements Serializable {
 
   public static final UTF8String UTF8StringNullValue = UTF8String.EMPTY_UTF8;
   public static final UTF8String UTF8StringOneValue = UTF8String.EMPTY_UTF8;
+
+  public void free() {
+    isNull = null;
+    intVector = null;
+    doubleVector = null;
+    longVector = null;
+    if (bytesVector != null) {
+      for (int i = 0; i < bytesVector.length; i ++) {
+        bytesVector[i] = null;
+      }
+      bytesVector = null;
+      starts = null;
+      lengths = null;
+    }
+  }
+
+  public long memoryFootprintInBytes() {
+    //    if (isNull == null) {
+    //      System.out.println("xxx");
+    //    }
+    int length = isNull.length;
+    long mem = 1 * length + 32;
+    if (dataType instanceof IntegerType) {
+      mem += 4 * length + 32;
+    } else if (dataType instanceof LongType) {
+      mem += 8 * length + 32;
+    } else if (dataType instanceof DoubleType) {
+      mem += 8 * length + 32;
+    } else if (dataType instanceof StringType) {
+      mem += 4 * length + 32;
+      mem += 4 * length + 32;
+      mem += 8 * length + 32 + (bytesVector[0].length + 32) * length;
+    }
+    return mem;
+  }
 }

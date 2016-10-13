@@ -28,7 +28,7 @@ import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.storage.BlockManager
 import org.apache.spark.util.{TaskCompletionListener, Utils}
 
-case class ExternalBatchSorter(
+class ExternalBatchSorter(
     taskMemoryManager: TaskMemoryManager,
     blockManager: BlockManager,
     taskContext: TaskContext,
@@ -41,7 +41,8 @@ case class ExternalBatchSorter(
   val spillWriters = mutable.ArrayBuffer.empty[RowBatchSpillWriter]
 
   var inMemoryBatchSorter: InMemoryBatchSorter = null
-  inMemoryBatchSorter = InMemoryBatchSorter()
+  inMemoryBatchSorter = InMemoryBatchSorter(
+    interBatchComparator, sortedBatches, schema, defaultCapacity)
 
   var peakMemoryUsedBytes: Long = 0L
 
@@ -82,20 +83,20 @@ case class ExternalBatchSorter(
 
   override def spill(size: Long, trigger: MemoryConsumer): Long = {
     if (trigger != this) {
-      if (readingIterator != null) {
-        return readingIterator.spill
-      }
+      // if (readingIterator != null) {
+      //   return readingIterator.spill
+      // }
       return 0
     }
 
-    if (inMemoryBatchSorter == null || inMemoryBatchSorter.numBatches() <= 0) {
+    if (inMemoryBatchSorter == null || sortedBatches.isEmpty) {
       return 0
     }
 
     logInfo(s"Thread ${Thread.currentThread.getId} spilling sort data of " +
       s"${Utils.bytesToString(getMemoryUsage())} to disk (${spillWriters.size} times so far)")
 
-    if (inMemoryBatchSorter.numBatches() > 0) {
+    if (!sortedBatches.isEmpty) {
       val spillWriter: RowBatchSpillWriter =
         new RowBatchSpillWriter(blockManager, writeMetrics, schema, defaultCapacity)
       spillWriters += spillWriter
@@ -117,11 +118,14 @@ case class ExternalBatchSorter(
   def freeMemory(): Long = {
     updatePeakMemoryUsed()
     var memoryFreed: Long = 0L
-    for (rb <- sortedBatches) {
+    var i = 0
+    while (i < sortedBatches.size) {
+      val rb = sortedBatches(i)
       val mem = rb.memoryFootprintInBytes()
       memoryFreed += mem
       used -= mem
       rb.free()
+      i += 1
     }
     sortedBatches.clear()
     memoryFreed
@@ -129,11 +133,16 @@ case class ExternalBatchSorter(
 
   def getMemoryUsage(): Long = {
     var totalSize: Long = 0
-    totalSize = sortedBatches.head.memoryFootprintInBytes() * sortedBatches.size
+    totalSize = if (!sortedBatches.isEmpty) {
+      sortedBatches.head.memoryFootprintInBytes() * sortedBatches.size
+      } else {
+        0
+      }
     // for (rb <- sortedBatches) {
     //   totalSize += rb.memoryFootprintInBytes()
     // }
-    (if (inMemoryBatchSorter == null) 0 else inMemoryBatchSorter.getMemoryUsage()) + totalSize
+    // (if (inMemoryBatchSorter == null) 0 else inMemoryBatchSorter.getMemoryUsage()) + totalSize
+    totalSize
   }
 
   def updatePeakMemoryUsed(): Unit = {

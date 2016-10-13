@@ -148,6 +148,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
     }
   }
 
+  var shouldReuseRowBatch: Boolean = true
+
   final def batchExecute(): RDD[RowBatch] = {
     if (children.nonEmpty) {
       val hasRowInput = children.exists(_.outputsRowBatches)

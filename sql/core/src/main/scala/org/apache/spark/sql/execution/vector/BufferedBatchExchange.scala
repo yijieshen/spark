@@ -74,9 +74,9 @@ case class BufferedBatchExchange(
 
   val rbSchema = output.map(_.dataType).toArray
 
-  private val serializer: Serializer = {
+  private lazy val serializer: Serializer = {
     if (tungstenMode) {
-      new DirectRowBatchSerializer(output, defaultCapacity)
+      new DirectRowBatchSerializer(output, defaultCapacity, shouldReuseRowBatch)
     } else {
       new SparkSqlSerializer(sparkConf)
     }

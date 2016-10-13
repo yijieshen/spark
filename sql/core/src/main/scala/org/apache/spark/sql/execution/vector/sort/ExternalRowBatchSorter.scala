@@ -22,6 +22,7 @@ import java.util.Comparator
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrdering, InterBatchOrdering}
+import org.apache.spark.sql.catalyst.util.AbstractScalaRowIterator
 import org.apache.spark.sql.catalyst.vector.RowBatch
 
 case class ExternalRowBatchSorter(
@@ -30,19 +31,16 @@ case class ExternalRowBatchSorter(
     innerBatchComparator: BatchOrdering,
     interBatchComparator: InterBatchOrdering) {
 
-
-
   val sparkEnv: SparkEnv = SparkEnv.get
   val taskContext: TaskContext = TaskContext.get
 
-  val sorter: ExternalBatchSorter = ExternalBatchSorter(
+  val sorter: ExternalBatchSorter = new ExternalBatchSorter(
     taskContext.taskMemoryManager,
     sparkEnv.blockManager,
     taskContext,
     interBatchComparator,
     output,
     defaultCapacity)
-
 
   var testSpillFrequency: Int = 0
   def setTestSpillFrequency(frequency: Int): Unit = {
@@ -51,10 +49,13 @@ case class ExternalRowBatchSorter(
 
   var numBatchesInserted: Int = 0
 
+  val innerBatchCmp = new Comparator[Integer]() {
+    def compare(i1: Integer, i2: Integer): Int = innerBatchComparator.compare(i1, i2)
+  }
+
   def insertBatch(rb: RowBatch): Unit = {
-    val innerBatchCmp = new Comparator[Integer]() {
-      def compare(i1: Integer, i2: Integer): Int = innerBatchComparator.compare(i1, i2)
-    }
+
+    innerBatchComparator.reset(rb)
     rb.sort(innerBatchCmp)
 
     sorter.insertBatch(rb)
@@ -77,6 +78,18 @@ case class ExternalRowBatchSorter(
       val sortedIterator: RowBatchSorterIterator = sorter.getSortedIterator()
       if (!sortedIterator.hasNext()) {
         cleanupResources()
+      }
+
+      new AbstractScalaRowIterator[RowBatch] {
+        override def hasNext: Boolean = sortedIterator.hasNext()
+
+        override def next(): RowBatch = {
+          sortedIterator.loadNext()
+          if (!hasNext) {
+            cleanupResources()
+          }
+          sortedIterator.currentBatch
+        }
       }
 
     } catch {
