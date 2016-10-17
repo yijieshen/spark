@@ -612,9 +612,6 @@ public class ColumnVector implements Serializable {
   }
 
   public long memoryFootprintInBytes() {
-    //    if (isNull == null) {
-    //      System.out.println("xxx");
-    //    }
     int length = isNull.length;
     long mem = 1 * length + 32;
     if (dataType instanceof IntegerType) {
@@ -626,7 +623,23 @@ public class ColumnVector implements Serializable {
     } else if (dataType instanceof StringType) {
       mem += 4 * length + 32;
       mem += 4 * length + 32;
-      mem += 8 * length + 32 + (bytesVector[0].length + 32) * length;
+      mem += 8 * length + 32 + (15 /*bytesVector[0].length */ + 32) * length;
+    }
+    return mem;
+  }
+
+  public static long estimateMemoryFootprint(DataType dataType, long length) {
+    long mem = length + 32;
+    if (dataType instanceof IntegerType) {
+      mem += 4 * length + 32;
+    } else if (dataType instanceof LongType) {
+      mem += 8 * length + 32;
+    } else if (dataType instanceof DoubleType) {
+      mem += 8 * length + 32;
+    } else if (dataType instanceof StringType) {
+      mem += 4 * length + 32;
+      mem += 4 * length + 32;
+      mem += 8 * length + 32 + (15 + 32) * length;
     }
     return mem;
   }

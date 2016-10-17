@@ -122,4 +122,12 @@ private[spark] class TaskContextImpl(
     internalAccumulators.foreach(registerAccumulator)
     internalAccumulators.map { a => (a.name.get, a) }.toMap
   }
+
+  @volatile private var consumer: Any = null
+
+  override def setMemoryConsumer(consumer: Any): Unit = {
+    this.consumer = consumer
+  }
+
+  override def getMemoryConsumer(): Any = consumer
 }

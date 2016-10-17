@@ -21,14 +21,15 @@ import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 
-import org.apache.spark.SparkConf
-
 import scala.reflect.ClassTag
+
+import org.apache.spark.memory.{MemoryConsumer, MemoryMode, TaskMemoryManager}
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.DataType
+import org.apache.spark.TaskContext
 
 class DirectRowBatchSerializer(
     schema: Seq[Attribute],
@@ -36,7 +37,8 @@ class DirectRowBatchSerializer(
     shouldReuseBatch: Boolean) extends Serializer with Serializable {
 
   override def newInstance(): SerializerInstance =
-    new DirectRowBatchSerializerInstance(schema, defaultCapacity, shouldReuseBatch)
+    new DirectRowBatchSerializerInstance(
+      schema, defaultCapacity, shouldReuseBatch)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
@@ -180,6 +182,13 @@ private class DirectRowBatchSerializerInstance(
         private[this] var rowBatch: RowBatch = null
         private[this] val reader: BatchRead = GenerateBatchRead.generate(schema, defaultCapacity)
         private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
+        private[this] val dts: Array[DataType] = schema.map(_.dataType).toArray
+        private[this] val estimatedBatchSize: Long =
+          RowBatch.estimateMemoryFootprint(dts, defaultCapacity)
+        private[this] val taskContext: TaskContext = TaskContext.get()
+        private[this] val taskMemoryManager: TaskMemoryManager = taskContext.taskMemoryManager()
+        private[this] val consumer: MemoryConsumer =
+          taskContext.getMemoryConsumer().asInstanceOf[MemoryConsumer]
 
         private[this] val EOF: Int = -1
 
@@ -198,7 +207,11 @@ private class DirectRowBatchSerializerInstance(
             override def hasNext: Boolean = nextBatchSize != EOF
 
             override def next(): (Int, RowBatch) = {
-              rowBatch = RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
+              taskMemoryManager.acquireExecutionMemory(
+                estimatedBatchSize, MemoryMode.ON_HEAP, consumer)
+              consumer.addUsed(estimatedBatchSize);
+
+              rowBatch = RowBatch.create(dts, defaultCapacity)
               rowBatch.reader = reader
               rowBatch.reset(false)
 

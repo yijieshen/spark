@@ -49,6 +49,10 @@ public abstract class MemoryConsumer {
     return used;
   }
 
+  public void addUsed(long size) {
+    this.used += size;
+  }
+
   /**
    * Force spill during building.
    *

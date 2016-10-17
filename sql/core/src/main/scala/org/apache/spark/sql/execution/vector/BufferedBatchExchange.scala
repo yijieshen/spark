@@ -18,6 +18,7 @@
 package org.apache.spark.sql.execution.vector
 
 import scala.collection.mutable
+
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer

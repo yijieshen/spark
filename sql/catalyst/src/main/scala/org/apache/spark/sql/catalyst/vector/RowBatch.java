@@ -145,6 +145,15 @@ public class RowBatch implements Serializable {
     }
   }
 
+  public static long estimateMemoryFootprint(DataType[] dataTypes, int capacity) {
+    long mem = 6 * 4 + 3 * 1 + 4 * 8; // fields size
+    mem += capacity * 4 + 32 + capacity * 8 + 32;
+    for (DataType dt: dataTypes) {
+      mem += ColumnVector.estimateMemoryFootprint(dt, capacity);
+    }
+    return mem;
+  }
+
   public long memoryFootprintInBytes() {
     long mem = 6 * 4 + 3 * 1 + 4 * 8; // fields size
     mem += capacity * 4 + 32 + capacity * 8 + 32;

@@ -104,6 +104,10 @@ abstract class TaskContext extends Serializable {
    */
   def isRunningLocally(): Boolean
 
+  def setMemoryConsumer(consumer: Any): Unit
+
+  def getMemoryConsumer(): Any
+
   /**
    * Adds a (Java friendly) listener to be executed on task completion.
    * This will be called in all situation - success, failure, or cancellation.

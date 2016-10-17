@@ -17,15 +17,18 @@
 
 package org.apache.spark.sql.execution.vector.sort
 
+import java.io.IOException
+
 import scala.collection.mutable
 
 import org.apache.spark.executor.ShuffleWriteMetrics
-import org.apache.spark.{Logging, TaskContext}
+import org.apache.spark.Logging
 import org.apache.spark.memory.{MemoryConsumer, MemoryMode, TaskMemoryManager}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.InterBatchOrdering
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.storage.BlockManager
+import org.apache.spark.TaskContext
 import org.apache.spark.util.{TaskCompletionListener, Utils}
 
 class ExternalBatchSorter(
@@ -44,6 +47,8 @@ class ExternalBatchSorter(
   inMemoryBatchSorter = InMemoryBatchSorter(
     interBatchComparator, sortedBatches, schema, defaultCapacity)
 
+  private var readingIterator: SpillableBatchIterator = null
+
   var peakMemoryUsedBytes: Long = 0L
 
   val writeMetrics = new ShuffleWriteMetrics()
@@ -58,16 +63,14 @@ class ExternalBatchSorter(
   })
 
   def insertBatch(rb: RowBatch): Unit = {
-    val mem = rb.memoryFootprintInBytes()
-    taskMemoryManager.acquireExecutionMemory(mem, MemoryMode.ON_HEAP, this)
-    used += mem
     sortedBatches += rb
   }
 
   def getSortedIterator(): RowBatchSorterIterator = {
     if (spillWriters.isEmpty) {
       assert(inMemoryBatchSorter != null)
-      inMemoryBatchSorter.getSortedIterator()
+      readingIterator = new SpillableBatchIterator(inMemoryBatchSorter.getSortedIterator())
+      readingIterator
     } else {
       val num = spillWriters.size + (if (inMemoryBatchSorter != null) 1 else 0)
       val spillMerger =
@@ -76,7 +79,8 @@ class ExternalBatchSorter(
         spillMerger.addSpillIfNotEmpty(writer.getReader(blockManager))
       }
       if (inMemoryBatchSorter != null) {
-        spillMerger.addSpillIfNotEmpty(inMemoryBatchSorter.getSortedIterator())
+        readingIterator = new SpillableBatchIterator(inMemoryBatchSorter.getSortedIterator())
+        spillMerger.addSpillIfNotEmpty(readingIterator)
       }
       spillMerger.getSortedIterator()
     }
@@ -85,12 +89,11 @@ class ExternalBatchSorter(
 
   override def spill(size: Long, trigger: MemoryConsumer): Long = {
     if (trigger != this) {
-      // if (readingIterator != null) {
-      //   return readingIterator.spill
-      // }
       System.out.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
       System.err.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
-
+      if (readingIterator != null) {
+         return readingIterator.spill()
+       }
       return 0
     }
 
@@ -187,4 +190,60 @@ class ExternalBatchSorter(
       }
     }
   }
+
+  class SpillableBatchIterator(
+      inMemSortedIterator: RowBatchSorterIterator) extends RowBatchSorterIterator {
+
+    var upstream: RowBatchSorterIterator = inMemSortedIterator
+    var nextUpstream: RowBatchSorterIterator = null
+
+    override def hasNext(): Boolean = {
+      if (nextUpstream != null) {
+        nextUpstream.hasNext()
+      } else {
+        upstream.hasNext()
+      }
+    }
+
+    @throws[IOException]
+    override def loadNext(): Unit = {
+      this.synchronized {
+        if (nextUpstream != null) {
+          upstream = nextUpstream
+          nextUpstream = null
+        }
+        upstream.loadNext()
+      }
+    }
+
+    override def currentBatch: RowBatch = upstream.currentBatch
+
+    @throws[IOException]
+    def spill(): Long = {
+      this.synchronized {
+        if (!(nextUpstream == null && upstream.hasNext())) {
+          return 0
+        }
+
+        val spillWriter: RowBatchSpillWriter =
+          new RowBatchSpillWriter(blockManager, writeMetrics, schema, defaultCapacity)
+        while (upstream.hasNext()) {
+          upstream.loadNext()
+          spillWriter.write(upstream.currentBatch)
+        }
+        spillWriter.close()
+        inMemoryBatchSorter.reset()
+
+        spillWriters += spillWriter
+        nextUpstream = spillWriter.getReader(blockManager)
+
+        var released: Long = 0
+        ExternalBatchSorter.this.synchronized {
+          released += freeMemory()
+        }
+        released
+      }
+    }
+  }
+
 }
