@@ -18,12 +18,12 @@
 package org.apache.spark.sql.execution
 
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.vector.BatchSort
+import org.apache.spark.sql.execution.vector.PureBatchSort
 
 private[sql] object DisableRowBatchReuse extends Rule[SparkPlan] {
 
   override def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
-    case operator @ BatchSort(_, _, _, _) =>
+    case operator @ PureBatchSort(_, _, _, _) =>
       operator.child.shouldReuseRowBatch = false
       operator
   }

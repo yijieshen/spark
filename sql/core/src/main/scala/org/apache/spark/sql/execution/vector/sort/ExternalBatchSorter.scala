@@ -21,7 +21,7 @@ import scala.collection.mutable
 
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.{Logging, TaskContext}
-import org.apache.spark.memory.{MemoryConsumer, TaskMemoryManager}
+import org.apache.spark.memory.{MemoryConsumer, MemoryMode, TaskMemoryManager}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.InterBatchOrdering
 import org.apache.spark.sql.catalyst.vector.RowBatch
@@ -58,7 +58,9 @@ class ExternalBatchSorter(
   })
 
   def insertBatch(rb: RowBatch): Unit = {
-    used += rb.memoryFootprintInBytes()
+    val mem = rb.memoryFootprintInBytes()
+    taskMemoryManager.acquireExecutionMemory(mem, MemoryMode.ON_HEAP, this)
+    used += mem
     sortedBatches += rb
   }
 
@@ -86,12 +88,18 @@ class ExternalBatchSorter(
       // if (readingIterator != null) {
       //   return readingIterator.spill
       // }
+      System.out.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
+      System.err.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
+
       return 0
     }
 
     if (inMemoryBatchSorter == null || sortedBatches.isEmpty) {
       return 0
     }
+
+    System.out.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by itself $this")
+    System.err.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by itself $this")
 
     logInfo(s"Thread ${Thread.currentThread.getId} spilling sort data of " +
       s"${Utils.bytesToString(getMemoryUsage())} to disk (${spillWriters.size} times so far)")
@@ -128,6 +136,7 @@ class ExternalBatchSorter(
       i += 1
     }
     sortedBatches.clear()
+    taskMemoryManager.releaseExecutionMemory(memoryFreed, MemoryMode.ON_HEAP, this)
     memoryFreed
   }
 

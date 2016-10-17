@@ -492,6 +492,12 @@ private[spark] object SQLConf {
     doc = "When true, SQL query would execute sort in vectorized mode when possible"
   )
 
+  val VECTORIZE_BATCH_SORT_ENABLED = booleanConf("spark.sql.vectorize.batch.sort.enabled",
+    defaultValue = Some(false),
+    isPublic = true,
+    doc = "When true, SQL query would execute batch sort in vectorized mode when possible"
+  )
+
   object Deprecated {
     val MAPRED_REDUCE_TASKS = "mapred.reduce.tasks"
     val EXTERNAL_SORT = "spark.sql.planner.externalSort"
@@ -619,6 +625,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
   private[spark] def vectorizedHMEnabled: Boolean = getConf(VECTORIZE_HM_ENABLED)
 
   private[spark] def vectorizedSortEnabled: Boolean = getConf(VECTORIZE_SORT_ENABLED)
+
+  private[spark] def vectorizedBatchSortEnabled: Boolean = getConf(VECTORIZE_BATCH_SORT_ENABLED)
 
   private[spark] def vectorizedShuffleEnabled: Boolean = getConf(VECTORIZE_SHUFFLE_ENABLED)
 

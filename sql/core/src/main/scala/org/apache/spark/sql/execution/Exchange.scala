@@ -30,7 +30,7 @@ import org.apache.spark.sql.catalyst.errors.attachTree
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.vector.{BatchExchange, BatchSort, BufferedBatchExchange}
+import org.apache.spark.sql.execution.vector.{BatchExchange, BatchSort, BufferedBatchExchange, PureBatchSort}
 import org.apache.spark.util.MutablePair
 
 /**
@@ -293,6 +293,8 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
 
   private def vectorizedSortEnabled: Boolean = sqlContext.conf.vectorizedSortEnabled
 
+  private def vectorizedBatchSortEnabled: Boolean = sqlContext.conf.vectorizedBatchSortEnabled
+
   private def minNumPostShufflePartitions: Option[Int] = {
     val minNumPostShufflePartitions = sqlContext.conf.minNumPostShufflePartitions
     if (minNumPostShufflePartitions > 0) Some(minNumPostShufflePartitions) else None
@@ -497,8 +499,11 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
       if (requiredOrdering.nonEmpty) {
         // If child.outputOrdering is [a, b] and requiredOrdering is [a], we do not need to sort.
         if (requiredOrdering != child.outputOrdering.take(requiredOrdering.length)) {
-          if (vectorizedSortEnabled && child.outputsRowBatches) {
+          if (vectorizedSortEnabled && !vectorizedBatchSortEnabled && child.outputsRowBatches) {
             BatchSort(requiredOrdering, global = false, child = child)
+          } else if (vectorizedSortEnabled &&
+              vectorizedBatchSortEnabled && child.outputsRowBatches) {
+            PureBatchSort(requiredOrdering, global = false, child = child)
           } else {
             Sort(requiredOrdering, global = false, child = child)
           }

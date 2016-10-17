@@ -17,14 +17,16 @@
 
 package org.apache.spark.sql.execution.vector
 
-import org.apache.spark.{InternalAccumulator, SparkEnv, TaskContext}
+import org.apache.spark.{InternalAccumulator, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrderings, BatchProjection, GenerateBatchOrdering}
+import org.apache.spark.sql.catalyst.expressions.vector.{GenerateBatchOrdering, GenerateInterBatchOrdering}
 import org.apache.spark.sql.catalyst.plans.physical.{Distribution, OrderedDistribution, UnspecifiedDistribution}
-import org.apache.spark.sql.execution.{SortPrefixUtils, SparkPlan, UnaryNode}
+import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.execution.{SparkPlan, UnaryNode}
 import org.apache.spark.sql.execution.metric.SQLMetrics
+import org.apache.spark.sql.execution.vector.sort.ExternalRowBatchSorter
 
 /**
   *
@@ -33,16 +35,17 @@ import org.apache.spark.sql.execution.metric.SQLMetrics
   * @param child
   * @param testSpillFrequency
   */
-case class BatchSort(
-    sortOrder: Seq[SortOrder],
-    global: Boolean,
-    child: SparkPlan,
-    testSpillFrequency: Int = 0) extends UnaryNode {
+case class PureBatchSort(
+  sortOrder: Seq[SortOrder],
+  global: Boolean,
+  child: SparkPlan,
+  testSpillFrequency: Int = 0) extends UnaryNode {
 
-  override def outputsUnsafeRows: Boolean = true
+  override def outputsUnsafeRows: Boolean = false
   override def canProcessUnsafeRows: Boolean = false
   override def canProcessSafeRows: Boolean = false
   override def canProcessRowBatches: Boolean = true
+  override def outputsRowBatches: Boolean = true
 
   override def output: Seq[Attribute] = child.output
 
@@ -57,32 +60,20 @@ case class BatchSort(
 
   private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
 
-  override protected def doExecute(): RDD[InternalRow] = {
-    val schema = child.schema
+  override protected def doBatchExecute(): RDD[RowBatch] = {
     val childOutput = child.output
 
     val dataSize = longMetric("dataSize")
     val spillSize = longMetric("spillSize")
 
     child.batchExecute().mapPartitionsInternal { iter =>
-      val rowVectorProjection = BatchProjection.create(
-        V2R(output) :: Nil, output, false, defaultBatchCapacity)
-      val ordering = newOrdering(sortOrder, childOutput)
-
-      val boundSortExpression = BindReferences.bindReference(sortOrder.head, childOutput)
-      val prefixComparator = SortPrefixUtils.getPrefixComparator(boundSortExpression)
-
-      val prefixProjection = BatchProjection.create(
-        SortPrefix(sortOrder.head) :: Nil, childOutput, false, defaultBatchCapacity)
-
-      val needFurtherComparisonBesidesPrefix = BatchOrderings.needFurtherCompare(sortOrder)
-      val innerBatchFullComparator = GenerateBatchOrdering.generate(
+      val innerBatchComparator = GenerateBatchOrdering.generate(
+        sortOrder, childOutput, defaultBatchCapacity)
+      val interBatchComparator = GenerateInterBatchOrdering.generate(
         sortOrder, childOutput, defaultBatchCapacity)
 
-      val pageSize = SparkEnv.get.memoryManager.pageSizeBytes
-      val sorter = new UnsafeExternalRowBatchSorter(
-        schema, rowVectorProjection, prefixProjection, ordering, prefixComparator,
-        innerBatchFullComparator, needFurtherComparisonBesidesPrefix, pageSize)
+      val sorter = new ExternalRowBatchSorter(
+        childOutput, defaultBatchCapacity, innerBatchComparator, interBatchComparator)
 
       if (testSpillFrequency > 0) {
         sorter.setTestSpillFrequency(testSpillFrequency)
@@ -94,12 +85,15 @@ case class BatchSort(
 
       val sortedIterator = sorter.sort(iter)
 
-      dataSize += sorter.getPeakMemoryUsage
+      dataSize += sorter.peakMemoryUsage()
       spillSize += TaskContext.get().taskMetrics().memoryBytesSpilled - spillSizeBefore
 
       TaskContext.get().internalMetricsToAccumulators(
-        InternalAccumulator.PEAK_EXECUTION_MEMORY).add(sorter.getPeakMemoryUsage)
+        InternalAccumulator.PEAK_EXECUTION_MEMORY).add(sorter.peakMemoryUsage)
       sortedIterator
     }
   }
+
+  override protected def doExecute(): RDD[InternalRow] =
+    throw new UnsupportedOperationException(getClass.getName)
 }
