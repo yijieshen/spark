@@ -146,8 +146,8 @@ public class RowBatch implements Serializable {
   }
 
   public static long estimateMemoryFootprint(DataType[] dataTypes, int capacity) {
-    long mem = 6 * 4 + 3 * 1 + 4 * 8; // fields size
-    mem += capacity * 4 + 32 + capacity * 8 + 32;
+    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
+    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* int array - selected*/ + 16 + capacity * 4 + capacity * 16 /* Integer array*/;
     for (DataType dt: dataTypes) {
       mem += ColumnVector.estimateMemoryFootprint(dt, capacity);
     }
@@ -155,8 +155,8 @@ public class RowBatch implements Serializable {
   }
 
   public long memoryFootprintInBytes() {
-    long mem = 6 * 4 + 3 * 1 + 4 * 8; // fields size
-    mem += capacity * 4 + 32 + capacity * 8 + 32;
+    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
+    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* int array - selected*/ + 16 + capacity * 4 + capacity * 16 /* Integer array*/;
     for (ColumnVector cv: columns) {
       mem += cv.memoryFootprintInBytes();
     }

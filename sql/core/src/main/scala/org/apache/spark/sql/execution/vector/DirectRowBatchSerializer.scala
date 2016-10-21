@@ -190,10 +190,14 @@ private class DirectRowBatchSerializerInstance(
         private[this] val consumer: MemoryConsumer =
           taskContext.getMemoryConsumer().asInstanceOf[MemoryConsumer]
 
+        private[this] val allocateGranularity: Long = 16 * 1024 * 1024; // 16 MB
+
         private[this] val EOF: Int = -1
 
         override def asKeyValueIterator: Iterator[(Int, RowBatch)] = {
           new Iterator[(Int, RowBatch)] {
+
+            private var numBatch: Long = 0L
 
             private[this] def readSize(): Int = try {
               dIn.readInt()
@@ -207,11 +211,18 @@ private class DirectRowBatchSerializerInstance(
             override def hasNext: Boolean = nextBatchSize != EOF
 
             override def next(): (Int, RowBatch) = {
-              taskMemoryManager.acquireExecutionMemory(
-                estimatedBatchSize, MemoryMode.ON_HEAP, consumer)
-              consumer.addUsed(estimatedBatchSize);
+              if (consumer.getAllocated() > estimatedBatchSize) {
+                consumer.minusAllocated(estimatedBatchSize)
+              } else {
+                taskMemoryManager.acquireExecutionMemory(
+                  allocateGranularity, MemoryMode.ON_HEAP, consumer)
+                consumer.addUsed(allocateGranularity);
+                consumer.setAllocated(allocateGranularity - estimatedBatchSize)
+              }
 
               rowBatch = RowBatch.create(dts, defaultCapacity)
+              numBatch += 1L
+
               rowBatch.reader = reader
               rowBatch.reset(false)
 

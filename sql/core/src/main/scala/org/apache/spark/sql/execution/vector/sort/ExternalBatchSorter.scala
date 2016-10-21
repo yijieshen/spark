@@ -51,6 +51,8 @@ class ExternalBatchSorter(
 
   var peakMemoryUsedBytes: Long = 0L
 
+  private val allocateGranularity: Long = 16 * 1024 * 1024; // 16 MB
+
   val writeMetrics = new ShuffleWriteMetrics()
 
   // Register a cleanup task with TaskContext to ensure that memory is guaranteed to be freed at
@@ -89,8 +91,6 @@ class ExternalBatchSorter(
 
   override def spill(size: Long, trigger: MemoryConsumer): Long = {
     if (trigger != this) {
-      System.out.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
-      System.err.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by $this")
       if (readingIterator != null) {
          return readingIterator.spill()
        }
@@ -100,9 +100,6 @@ class ExternalBatchSorter(
     if (inMemoryBatchSorter == null || sortedBatches.isEmpty) {
       return 0
     }
-
-    System.out.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by itself $this")
-    System.err.println(s"Thread ${Thread.currentThread.getId} Sort spill triggered by itself $this")
 
     logInfo(s"Thread ${Thread.currentThread.getId} spilling sort data of " +
       s"${Utils.bytesToString(getMemoryUsage())} to disk (${spillWriters.size} times so far)")
@@ -127,14 +124,17 @@ class ExternalBatchSorter(
   }
 
   def freeMemory(): Long = {
-    updatePeakMemoryUsed()
-    var memoryFreed: Long = 0L
+    if (sortedBatches.isEmpty) return 0
+
+    val memoryFreed = getMemoryUsage()
+    if (memoryFreed > peakMemoryUsedBytes) {
+      peakMemoryUsedBytes = memoryFreed
+    }
+    used -= memoryFreed
+
     var i = 0
     while (i < sortedBatches.size) {
       val rb = sortedBatches(i)
-      val mem = rb.memoryFootprintInBytes()
-      memoryFreed += mem
-      used -= mem
       rb.free()
       i += 1
     }
@@ -144,17 +144,13 @@ class ExternalBatchSorter(
   }
 
   def getMemoryUsage(): Long = {
-    var totalSize: Long = 0
-    totalSize = if (!sortedBatches.isEmpty) {
-      sortedBatches.head.memoryFootprintInBytes() * sortedBatches.size
-      } else {
-        0
-      }
-    // for (rb <- sortedBatches) {
-    //   totalSize += rb.memoryFootprintInBytes()
-    // }
-    // (if (inMemoryBatchSorter == null) 0 else inMemoryBatchSorter.getMemoryUsage()) + totalSize
-    totalSize
+    val batchSize = if (sortedBatches.nonEmpty) sortedBatches.head.memoryFootprintInBytes() else 0
+    val numBatchPerAllocation: Long = allocateGranularity / batchSize
+    var allocationCount: Long = sortedBatches.size / numBatchPerAllocation
+    if (sortedBatches.size % numBatchPerAllocation != 0) {
+      allocationCount += 1
+    }
+    allocationCount * allocateGranularity
   }
 
   def updatePeakMemoryUsed(): Unit = {

@@ -685,6 +685,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
       SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
       import sqlContext.implicits._
 

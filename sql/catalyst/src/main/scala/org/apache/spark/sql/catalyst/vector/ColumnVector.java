@@ -613,33 +613,33 @@ public class ColumnVector implements Serializable {
 
   public long memoryFootprintInBytes() {
     int length = isNull.length;
-    long mem = 1 * length + 32;
+    long mem = 80 /* field size */+ length * 1 + 16;
     if (dataType instanceof IntegerType) {
-      mem += 4 * length + 32;
+      mem += 4 * length + 16;
     } else if (dataType instanceof LongType) {
-      mem += 8 * length + 32;
+      mem += 8 * length + 16;
     } else if (dataType instanceof DoubleType) {
-      mem += 8 * length + 32;
+      mem += 8 * length + 16;
     } else if (dataType instanceof StringType) {
-      mem += 4 * length + 32;
-      mem += 4 * length + 32;
-      mem += 8 * length + 32 + (15 /*bytesVector[0].length */ + 32) * length;
+      mem += 4 * length + 16;
+      mem += 4 * length + 16;
+      mem += 4 * length + 16 + (16 + 32 /*str len*/) * length;
     }
     return mem;
   }
 
   public static long estimateMemoryFootprint(DataType dataType, long length) {
-    long mem = length + 32;
+    long mem = 80 /* field size */+ length * 1 + 16;
     if (dataType instanceof IntegerType) {
-      mem += 4 * length + 32;
+      mem += 4 * length + 16;
     } else if (dataType instanceof LongType) {
-      mem += 8 * length + 32;
+      mem += 8 * length + 16;
     } else if (dataType instanceof DoubleType) {
-      mem += 8 * length + 32;
+      mem += 8 * length + 16;
     } else if (dataType instanceof StringType) {
-      mem += 4 * length + 32;
-      mem += 4 * length + 32;
-      mem += 8 * length + 32 + (15 + 32) * length;
+      mem += 4 * length + 16;
+      mem += 4 * length + 16;
+      mem += 4 * length + 16 + (16 + 32 /*str len*/) * length;
     }
     return mem;
   }

@@ -33,6 +33,20 @@ public abstract class MemoryConsumer {
   private final long pageSize;
   protected long used;
 
+  protected long allocated;
+
+  public long getAllocated() {
+    return allocated;
+  }
+
+  public void minusAllocated(long size) {
+    this.allocated -= size;
+  }
+
+  public void setAllocated(long size) {
+    this.allocated = size;
+  }
+
   protected MemoryConsumer(TaskMemoryManager taskMemoryManager, long pageSize) {
     this.taskMemoryManager = taskMemoryManager;
     this.pageSize = pageSize;
