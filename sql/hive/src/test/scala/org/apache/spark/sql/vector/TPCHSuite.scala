@@ -697,4 +697,32 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       result.show(false)
     }
   }
+
+  test("Join") {
+    withSQLConf(
+      SQLConf.VECTORIZE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
+      import sqlContext.implicits._
+
+      val result =
+        region.filter('r_name === "ASIA")
+          .join(nation, 'r_regionkey === 'n_regionkey)
+          .join(supplier, 'n_nationkey === 's_nationkey)
+          .join(lineitem, 's_suppkey === 'l_suppkey)
+          // .select('n_name, 'l_extendedprice, 'l_discount, 'l_orderkey, 's_nationkey)
+          // .join(ord, 'l_orderkey === 'o_orderkey)
+          // .join(customer, 'o_custkey === 'c_custkey && 's_nationkey === 'c_nationkey)
+          .select('n_name, ('l_extendedprice * (lit(1) - 'l_discount)).as("value"))
+          .groupBy('n_name)
+          .agg(sum('value).as("revenue"))
+          .sort('revenue.desc)
+
+      result.explain(true)
+      result.show(false)
+    }
+  }
 }

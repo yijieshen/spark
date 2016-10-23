@@ -41,7 +41,7 @@ case class RowBatchSpillWriter(
     blockId, file, serializerInstance, 1024 * 1024, writeMetrics)
 
   val batchWrite = GenerateBatchWrite.generate(output, defaultCapacity)
-  val sortedArray = (0 until defaultCapacity).toArray.map(Integer.valueOf(_))
+  val sortedArray = (0 until defaultCapacity).toArray
 
   def write(rb: RowBatch): Unit = {
     numBatchesSpilled += 1

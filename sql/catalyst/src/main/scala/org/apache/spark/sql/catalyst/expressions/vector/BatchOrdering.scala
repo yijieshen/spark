@@ -19,14 +19,14 @@ package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen._
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{IComp, RowBatch}
 import org.apache.spark.sql.types._
 
 /**
   * Inherits some default implementation for Java from `Ordering[Integer]`
   */
-class BatchOrdering extends Ordering[Integer] {
-  def compare(a: Integer, b: Integer): Int = {
+class BatchOrdering extends IComp {
+  def compare(a: Int, b: Int): Int = {
     throw new UnsupportedOperationException
   }
 
@@ -156,10 +156,8 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
           this.current = rb;
         }
 
-        public int compare(Integer ax, Integer bx) {
+        public int compare(int a, int b) {
           RowBatch ${ctx.INPUT_ROWBATCH} = current;
-          int a = ax;
-          int b = bx;
           int comp;
           $comparisons
           return 0;

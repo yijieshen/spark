@@ -17,13 +17,12 @@
 package org.apache.spark.sql.execution.vector.sort
 
 import java.io.IOException
-import java.util.Comparator
 
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrdering, InterBatchOrdering}
 import org.apache.spark.sql.catalyst.util.AbstractScalaRowIterator
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{IComp, RowBatch}
 
 case class ExternalRowBatchSorter(
     output: Seq[Attribute],
@@ -49,8 +48,8 @@ case class ExternalRowBatchSorter(
 
   var numBatchesInserted: Int = 0
 
-  val innerBatchCmp = new Comparator[Integer]() {
-    def compare(i1: Integer, i2: Integer): Int = innerBatchComparator.compare(i1, i2)
+  val innerBatchCmp = new IComp() {
+    def compare(i1: Int, i2: Int): Int = innerBatchComparator.compare(i1, i2)
   }
 
   def insertBatch(rb: RowBatch): Unit = {

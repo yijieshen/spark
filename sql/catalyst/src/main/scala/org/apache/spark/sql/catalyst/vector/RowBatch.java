@@ -44,7 +44,7 @@ public class RowBatch implements Serializable {
   public boolean selectedInUse; // if selected is valid
   public ColumnVector[] columns;
 
-  public Integer[] sorted; // array of sorted row indices
+  public int[] sorted; // array of sorted row indices
   public boolean sortedInUse; // if sorted is valid
   public int startIdx;
   public int numRows;
@@ -89,7 +89,7 @@ public class RowBatch implements Serializable {
     size = capacity;
     selected = new int[capacity];
     selectedInUse = false;
-    sorted = new Integer[capacity];
+    sorted = new int[capacity];
     sortedInUse = false;
     columns = new ColumnVector[numCols];
   }
@@ -147,7 +147,7 @@ public class RowBatch implements Serializable {
 
   public static long estimateMemoryFootprint(DataType[] dataTypes, int capacity) {
     long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
-    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* int array - selected*/ + 16 + capacity * 4 + capacity * 16 /* Integer array*/;
+    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* selected*/ + 16 + capacity * 4 /* sorted*/;
     for (DataType dt: dataTypes) {
       mem += ColumnVector.estimateMemoryFootprint(dt, capacity);
     }
@@ -156,7 +156,7 @@ public class RowBatch implements Serializable {
 
   public long memoryFootprintInBytes() {
     long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
-    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* int array - selected*/ + 16 + capacity * 4 + capacity * 16 /* Integer array*/;
+    mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* selected*/ + 16 + capacity * 4 /* sorted*/;
     for (ColumnVector cv: columns) {
       mem += cv.memoryFootprintInBytes();
     }
@@ -223,7 +223,7 @@ public class RowBatch implements Serializable {
     };
   }
 
-  public void sort(Comparator<Integer> comparator) {
+  public void sort(IComp comparator) {
     sortedInUse = true;
     if (selectedInUse) {
       for (int i = 0; i < size; i ++) {
@@ -234,15 +234,17 @@ public class RowBatch implements Serializable {
         sorted[i] = i;
       }
     }
-    Arrays.sort(sorted, 0, size, comparator);
+    TSort.sort(sorted, 0, size, comparator, null, 0, 0);
   }
 
   public void sort(final int[] sortedBy) {
-    Comparator<Integer> comparator =
-        new Comparator<Integer>() {
+    IComp comparator =
+        new IComp() {
           @Override
-          public int compare(Integer i1, Integer i2) {
-            return Integer.compare(sortedBy[i1], sortedBy[i2]);
+          public int compare(int i1, int i2) {
+            int x = sortedBy[i1];
+            int y = sortedBy[i2];
+            return (x < y) ? -1 : ((x == y) ? 0 : 1);
           }
         };
     sort(comparator);

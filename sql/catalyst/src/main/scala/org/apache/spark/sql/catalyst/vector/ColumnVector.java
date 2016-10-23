@@ -274,7 +274,7 @@ public class ColumnVector implements Serializable {
     lengths[to] = src.lengths[from];
   }
 
-  public void putIntCV(ColumnVector src, Integer[] positions, int from, int length) {
+  public void putIntCV(ColumnVector src, int[] positions, int from, int length) {
     values = ensureFreeSpace(values, length * 4);
     if (src.noNulls) {
       for (int j = from; j < from + length; j ++) {
@@ -299,7 +299,7 @@ public class ColumnVector implements Serializable {
     }
   }
 
-  public void putLongCV(ColumnVector src, Integer[] positions, int from, int length) {
+  public void putLongCV(ColumnVector src, int[] positions, int from, int length) {
     values = ensureFreeSpace(values, length * 8);
     if (src.noNulls) {
       for (int j = from; j < from + length; j ++) {
@@ -324,7 +324,7 @@ public class ColumnVector implements Serializable {
     }
   }
 
-  public void putDoubleCV(ColumnVector src, Integer[] positions, int from, int length) {
+  public void putDoubleCV(ColumnVector src, int[] positions, int from, int length) {
     values = ensureFreeSpace(values, length * 8);
     if (src.noNulls) {
       for (int j = from; j < from + length; j ++) {
@@ -349,7 +349,7 @@ public class ColumnVector implements Serializable {
     }
   }
 
-  public void putStringCV(ColumnVector src, Integer[] positions, int from, int length) {
+  public void putStringCV(ColumnVector src, int[] positions, int from, int length) {
     values = ensureFreeSpace(values, length * 8);
     if (src.noNulls) {
       for (int j = from; j < from + length; j ++) {
@@ -409,28 +409,28 @@ public class ColumnVector implements Serializable {
   }
 
   public void writeIntCVToStream(
-      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+      WritableByteChannel out, int[] positions, int from, int length) throws IOException {
     prepareBuffers(length, IntegerType$.MODULE$);
     putIntCV(this, positions, from, length);
     writeToStream(out);
   }
 
   public void writeLongCVToStream(
-      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+      WritableByteChannel out, int[] positions, int from, int length) throws IOException {
     prepareBuffers(length, LongType$.MODULE$);
     putLongCV(this, positions, from, length);
     writeToStream(out);
   }
 
   public void writeDoubleCVToStream(
-      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+      WritableByteChannel out, int[] positions, int from, int length) throws IOException {
     prepareBuffers(length, DoubleType$.MODULE$);
     putDoubleCV(this, positions, from, length);
     writeToStream(out);
   }
 
   public void writeStringCVToStream(
-      WritableByteChannel out, Integer[] positions, int from, int length) throws IOException {
+      WritableByteChannel out, int[] positions, int from, int length) throws IOException {
     prepareBuffers(length, StringType$.MODULE$);
     putStringCV(this, positions, from, length);
     writeToStream(out);
