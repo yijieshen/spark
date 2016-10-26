@@ -31,17 +31,19 @@ case class InMemoryBatchSorter(
     schema: Seq[Attribute],
     defaultCapacity: Int) {
 
-  val comparator: Comparator[RowBatch] = new Comparator[RowBatch] {
-    override def compare(r1: RowBatch, r2: RowBatch): Int = {
-      interBatchOrdering.compare(r1, r1.sorted(r1.rowIdx), r2, r2.sorted(r2.rowIdx))
-    }
-  }
+  //  val comparator: Comparator[RowBatch] = new Comparator[RowBatch] {
+  //    override def compare(r1: RowBatch, r2: RowBatch): Int = {
+  //      interBatchOrdering.compare(r1, r1.sorted(r1.rowIdx), r2, r2.sorted(r2.rowIdx))
+  //    }
+  //  }
+  // val priorityQueue = new java.util.PriorityQueue[RowBatch](comparator)
 
-  val priorityQueue = new java.util.PriorityQueue[RowBatch](comparator)
+  val priorityQueue = new PriorityQ(interBatchOrdering)
 
   val batchCopier = GenerateBatchCopier.generate(schema, defaultCapacity)
 
   def getSortedIterator(): RowBatchSorterIterator = {
+    priorityQueue.reset(sortedBatches.size)
     sortedBatches.foreach { rb =>
       rb.rowIdx = 0
       priorityQueue.add(rb)
