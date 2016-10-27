@@ -211,7 +211,7 @@ private class DirectRowBatchSerializerInstance(
             override def hasNext: Boolean = nextBatchSize != EOF
 
             override def next(): (Int, RowBatch) = {
-              if (consumer.getAllocated() > estimatedBatchSize) {
+              if (consumer.getAllocated() >= estimatedBatchSize) {
                 consumer.minusAllocated(estimatedBatchSize)
               } else {
                 taskMemoryManager.acquireExecutionMemory(

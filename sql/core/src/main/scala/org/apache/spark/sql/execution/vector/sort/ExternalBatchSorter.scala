@@ -40,18 +40,14 @@ class ExternalBatchSorter(
     defaultCapacity: Int)
   extends MemoryConsumer(taskMemoryManager) with Logging {
 
-  val sortedBatches = mutable.ArrayBuffer.empty[RowBatch]
   val spillWriters = mutable.ArrayBuffer.empty[RowBatchSpillWriter]
 
   var inMemoryBatchSorter: InMemoryBatchSorter = null
-  inMemoryBatchSorter = InMemoryBatchSorter(
-    interBatchComparator, sortedBatches, schema, defaultCapacity)
+  inMemoryBatchSorter = InMemoryBatchSorter(this, interBatchComparator, schema, defaultCapacity)
 
   private var readingIterator: SpillableBatchIterator = null
 
   var peakMemoryUsedBytes: Long = 0L
-
-  private val allocateGranularity: Long = 16 * 1024 * 1024; // 16 MB
 
   val writeMetrics = new ShuffleWriteMetrics()
 
@@ -65,7 +61,7 @@ class ExternalBatchSorter(
   })
 
   def insertBatch(rb: RowBatch): Unit = {
-    sortedBatches += rb
+    inMemoryBatchSorter.insertBatch(rb)
   }
 
   def getSortedIterator(): RowBatchSorterIterator = {
@@ -97,14 +93,14 @@ class ExternalBatchSorter(
       return 0
     }
 
-    if (inMemoryBatchSorter == null || sortedBatches.isEmpty) {
+    if (inMemoryBatchSorter == null || inMemoryBatchSorter.numBatches() <= 0) {
       return 0
     }
 
     logInfo(s"Thread ${Thread.currentThread.getId} spilling sort data of " +
       s"${Utils.bytesToString(getMemoryUsage())} to disk (${spillWriters.size} times so far)")
 
-    if (!sortedBatches.isEmpty) {
+    if (inMemoryBatchSorter.numBatches() > 0) {
       val spillWriter: RowBatchSpillWriter =
         new RowBatchSpillWriter(blockManager, writeMetrics, schema, defaultCapacity)
       spillWriters += spillWriter
@@ -114,7 +110,6 @@ class ExternalBatchSorter(
         spillWriter.write(sortedBatches.currentBatch)
       }
       spillWriter.close()
-      inMemoryBatchSorter.reset()
     }
 
     val spillSize: Long = freeMemory()
@@ -124,33 +119,21 @@ class ExternalBatchSorter(
   }
 
   def freeMemory(): Long = {
-    if (sortedBatches.isEmpty) return 0
-
     val memoryFreed = getMemoryUsage()
     if (memoryFreed > peakMemoryUsedBytes) {
       peakMemoryUsedBytes = memoryFreed
     }
     used -= memoryFreed
 
-    var i = 0
-    while (i < sortedBatches.size) {
-      val rb = sortedBatches(i)
-      rb.free()
-      i += 1
+    if (inMemoryBatchSorter != null) {
+      inMemoryBatchSorter.freeMemory()
     }
-    sortedBatches.clear()
     taskMemoryManager.releaseExecutionMemory(memoryFreed, MemoryMode.ON_HEAP, this)
     memoryFreed
   }
 
   def getMemoryUsage(): Long = {
-    val batchSize = if (sortedBatches.nonEmpty) sortedBatches.head.memoryFootprintInBytes() else 0
-    val numBatchPerAllocation: Long = allocateGranularity / batchSize
-    var allocationCount: Long = sortedBatches.size / numBatchPerAllocation
-    if (sortedBatches.size % numBatchPerAllocation != 0) {
-      allocationCount += 1
-    }
-    allocationCount * allocateGranularity
+     if (inMemoryBatchSorter == null) 0 else inMemoryBatchSorter.getMemoryUsage()
   }
 
   def updatePeakMemoryUsed(): Unit = {
@@ -170,7 +153,7 @@ class ExternalBatchSorter(
       deleteSpillFiles()
       freeMemory()
       if (inMemoryBatchSorter != null) {
-        inMemoryBatchSorter.free()
+        inMemoryBatchSorter.freeMemory()
         inMemoryBatchSorter = null
       }
     }
@@ -228,7 +211,6 @@ class ExternalBatchSorter(
           spillWriter.write(upstream.currentBatch)
         }
         spillWriter.close()
-        inMemoryBatchSorter.reset()
 
         spillWriters += spillWriter
         nextUpstream = spillWriter.getReader(blockManager)

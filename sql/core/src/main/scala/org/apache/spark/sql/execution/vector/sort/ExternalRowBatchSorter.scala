@@ -22,7 +22,7 @@ import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchOrdering, InterBatchOrdering}
 import org.apache.spark.sql.catalyst.util.AbstractScalaRowIterator
-import org.apache.spark.sql.catalyst.vector.{IComp, RowBatch}
+import org.apache.spark.sql.catalyst.vector.{IntComparator, RowBatch}
 
 case class ExternalRowBatchSorter(
     output: Seq[Attribute],
@@ -48,7 +48,7 @@ case class ExternalRowBatchSorter(
 
   var numBatchesInserted: Int = 0
 
-  val innerBatchCmp = new IComp() {
+  val innerBatchCmp = new IntComparator() {
     def compare(i1: Int, i2: Int): Int = innerBatchComparator.compare(i1, i2)
   }
 

@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
-public class TSort {
+public class IntArrayTimSort {
   /**
    * This is the minimum sized sequence that will be merged.  Shorter
    * sequences will be lengthened by calling binarySort.  If the entire
@@ -45,7 +45,7 @@ public class TSort {
   /**
    * The comparator for this sort.
    */
-  private final IComp c;
+  private final IntComparator c;
 
   /**
    * When we get into galloping mode, we stay there until both runs win less
@@ -101,7 +101,7 @@ public class TSort {
    * @param workBase origin of usable space in work array
    * @param workLen usable size of work array
    */
-  private TSort(int[] a, IComp c, int[] work, int workBase, int workLen) {
+  private IntArrayTimSort(int[] a, IntComparator c, int[] work, int workBase, int workLen) {
     this.a = a;
     this.c = c;
 
@@ -160,7 +160,7 @@ public class TSort {
    * @param workLen usable size of work array
    * @since 1.8
    */
-  static void sort(int[] a, int lo, int hi, IComp c,
+  public static void sort(int[] a, int lo, int hi, IntComparator c,
                        int[] work, int workBase, int workLen) {
     assert c != null && a != null && lo >= 0 && lo <= hi && hi <= a.length;
 
@@ -180,7 +180,7 @@ public class TSort {
      * extending short natural runs to minRun elements, and merging runs
      * to maintain stack invariant.
      */
-    TSort ts = new TSort(a, c, work, workBase, workLen);
+    IntArrayTimSort ts = new IntArrayTimSort(a, c, work, workBase, workLen);
     int minRun = minRunLength(nRemaining);
     do {
       // Identify next run
@@ -209,6 +209,61 @@ public class TSort {
   }
 
   /**
+   * Sorts the given range, using the given workspace array slice
+   * for temp storage when possible. This method is designed to be
+   * invoked from public methods (in class Arrays) after performing
+   * any necessary array bounds checks and expanding parameters into
+   * the required forms.
+   *
+   * @param a the array to be sorted
+   * @param lo the index of the first element, inclusive, to be sorted
+   * @param hi the index of the last element, exclusive, to be sorted
+   * @param c the comparator to use
+   * @since 1.8
+   */
+  public static void msort(int[] a, int lo, int hi, IntComparator c,
+                   int[] starts, int[] lengths) {
+    assert c != null && a != null && lo >= 0 && lo <= hi && hi <= a.length;
+    assert starts.length == lengths.length;
+    assert starts[starts.length - 1] + lengths[lengths.length - 1] == hi;
+
+    int total = hi - lo;
+
+    if (total / lengths.length >= MIN_MERGE) {
+      int nRemaining  = hi - lo;
+      if (nRemaining < 2)
+        return;  // Arrays of size 0 and 1 are always sorted
+
+      // If array is small, do a "mini-TimSort" with no merges
+      if (nRemaining < MIN_MERGE) {
+        int initRunLen = countRunAndMakeAscending(a, lo, hi, c);
+        binarySort(a, lo, hi, lo + initRunLen, c);
+        return;
+      }
+
+      /**
+       * March over the array once, left to right, finding natural runs,
+       * extending short natural runs to minRun elements, and merging runs
+       * to maintain stack invariant.
+       */
+      IntArrayTimSort ts = new IntArrayTimSort(a, c, null, 0, 0);
+
+      // Push all runs onto pending-run stack one by one, and maybe merge
+      // this differs from the original sort for no need to identify runs
+      for (int i = 0; i < starts.length; i ++) {
+        ts.pushRun(starts[i], lengths[i]);
+        ts.mergeCollapse();
+      }
+
+      // Merge all remaining runs to complete sort
+      ts.mergeForceCollapse();
+      assert ts.stackSize == 1;
+    } else {
+      sort(a, lo, hi, c, null, 0, 0);
+    }
+  }
+
+  /**
    * Sorts the specified portion of the specified array using a binary
    * insertion sort.  This is the best method for sorting small numbers
    * of elements.  It requires O(n log n) compares, but O(n^2) data
@@ -228,7 +283,7 @@ public class TSort {
    */
   @SuppressWarnings("fallthrough")
   private static void binarySort(int[] a, int lo, int hi, int start,
-                                     IComp c) {
+                                     IntComparator c) {
     assert lo <= start && start <= hi;
     if (start == lo)
       start++;
@@ -298,7 +353,7 @@ public class TSort {
    *          the specified array
    */
   private static int countRunAndMakeAscending(int[] a, int lo, int hi,
-                                                  IComp c) {
+                                                  IntComparator c) {
     assert lo < hi;
     int runHi = lo + 1;
     if (runHi == hi)
@@ -488,7 +543,7 @@ public class TSort {
    *    should follow it.
    */
   private static int gallopLeft(int key, int[] a, int base, int len, int hint,
-                                    IComp c) {
+                                    IntComparator c) {
     assert len > 0 && hint >= 0 && hint < len;
     int lastOfs = 0;
     int ofs = 1;
@@ -558,7 +613,7 @@ public class TSort {
    * @return the int k,  0 <= k <= n such that a[b + k - 1] <= key < a[b + k]
    */
   private static int gallopRight(int key, int[] a, int base, int len,
-                                     int hint, IComp c) {
+                                     int hint, IntComparator c) {
     assert len > 0 && hint >= 0 && hint < len;
 
     int ofs = 1;
@@ -654,7 +709,7 @@ public class TSort {
       return;
     }
 
-    IComp c = this.c;  // Use local variable for performance
+    IntComparator c = this.c;  // Use local variable for performance
     int minGallop = this.minGallop;    //  "    "       "     "      "
     outer:
     while (true) {
@@ -774,7 +829,7 @@ public class TSort {
       return;
     }
 
-    IComp c = this.c;  // Use local variable for performance
+    IntComparator c = this.c;  // Use local variable for performance
     int minGallop = this.minGallop;    //  "    "       "     "      "
     outer:
     while (true) {

@@ -17,59 +17,164 @@
 package org.apache.spark.sql.execution.vector.sort
 
 import java.io.IOException
-import java.util.Comparator
 
 import scala.collection.mutable
 
+import org.apache.spark.memory.{MemoryConsumer, MemoryMode}
+import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{GenerateBatchCopier, InterBatchOrdering}
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{IntArrayTimSort, IntComparator, RowBatch}
 
 case class InMemoryBatchSorter(
+    consumer: MemoryConsumer,
     interBatchOrdering: InterBatchOrdering,
-    sortedBatches: mutable.ArrayBuffer[RowBatch],
     schema: Seq[Attribute],
     defaultCapacity: Int) {
 
-  //  val comparator: Comparator[RowBatch] = new Comparator[RowBatch] {
-  //    override def compare(r1: RowBatch, r2: RowBatch): Int = {
-  //      interBatchOrdering.compare(r1, r1.sorted(r1.rowIdx), r2, r2.sorted(r2.rowIdx))
-  //    }
-  //  }
-  // val priorityQueue = new java.util.PriorityQueue[RowBatch](comparator)
+  val sortedBatches: mutable.ArrayBuffer[RowBatch] = mutable.ArrayBuffer.empty[RowBatch]
+  var all: Array[Int] = null
+  var starts: Array[Int] = null
+  var lengths: Array[Int] = null
+  var batchCount: Int = 0
+  var totalSize: Int = 0
 
-  val priorityQueue = new PriorityQ(interBatchOrdering)
+  val taskMemoryManager = TaskContext.get().taskMemoryManager()
+  val allocateGranularity: Long = 16 * 1024 * 1024; // 16 MB
+
+  var allocated: Long = 0
+  var firstTime: Boolean = true
+
+  val comparator: IntComparator = new IntComparator {
+    override def compare(i1: Int, i2: Int): Int = {
+      val b1: Int = i1 >>> 16
+      val l1: Int = i1 & 65535
+      val b2: Int = i2 >>> 16
+      val l2: Int = i2 & 65535
+      interBatchOrdering.compare(sortedBatches(b1), l1, sortedBatches(b2), l2)
+    }
+  }
+
+  def insertBatch(rb: RowBatch): Unit = {
+    sortedBatches += rb
+    batchCount += 1
+    totalSize += rb.size
+
+    if (allocated <= 0) {
+      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.ON_HEAP, consumer)
+      consumer.addUsed(allocateGranularity)
+      allocated = allocateGranularity
+    }
+
+    val arraySize = (rb.size + 2) * 4 + (if (firstTime) {firstTime = false; 3 * 16} else 0)
+    if (allocated > arraySize) {
+      allocated -= arraySize
+    } else {
+      val short = arraySize - allocated
+      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.ON_HEAP, consumer)
+      consumer.addUsed(allocateGranularity)
+      allocated = allocateGranularity - short
+    }
+  }
+
+  def arrayFootprint(): Long = {
+    if (sortedBatches.isEmpty) return 0
+    val actualSize = 16 + totalSize * 4 + (16 + batchCount * 4) * 2
+    val numAllocation = actualSize / allocateGranularity +
+      (if (actualSize % allocateGranularity != 0) 1 else 0)
+    numAllocation * allocateGranularity
+  }
+
+  def numBatches(): Int = sortedBatches.size
+
+  def getMemoryUsage(): Long = {
+    if (sortedBatches.isEmpty) return 0
+
+    val arraySize = arrayFootprint()
+    val batchSize = if (sortedBatches.nonEmpty) sortedBatches.head.memoryFootprintInBytes() else 0
+    val numBatchPerAllocation: Long = allocateGranularity / batchSize
+    var allocationCount: Long = sortedBatches.size / numBatchPerAllocation
+    if (sortedBatches.size % numBatchPerAllocation != 0) {
+      allocationCount += 1
+    }
+
+    allocationCount * allocateGranularity + arraySize
+  }
+
+  def freeMemory(): Unit = {
+    batchCount = 0
+    totalSize = 0
+    firstTime = true
+    allocated = 0
+    all = null
+    starts = null
+    lengths = null
+
+    var i = 0
+    while (i < sortedBatches.size) {
+      val rb = sortedBatches(i)
+      rb.free()
+      i += 1
+    }
+    sortedBatches.clear()
+  }
+
+  def preSort(): Unit = {
+    all = new Array[Int](totalSize)
+    starts = new Array[Int](batchCount)
+    lengths = new Array[Int](batchCount)
+
+    var pos = 0
+    var rbIdx = 0
+    while (rbIdx < batchCount) {
+      val rb = sortedBatches(rbIdx)
+      starts(rbIdx) = pos
+      lengths(rbIdx) = rb.size
+
+      val higherBits = rbIdx << 16
+      var rowIdx = 0
+      while (rowIdx < rb.size) {
+        all(pos) = higherBits | (rb.sorted(rowIdx) & 65535)
+
+        pos += 1
+        rowIdx += 1
+      }
+
+      rbIdx += 1
+    }
+  }
+
+  def sort(): Unit = {
+    preSort()
+    IntArrayTimSort.msort(all, 0, all.length, comparator, starts, lengths)
+  }
 
   val batchCopier = GenerateBatchCopier.generate(schema, defaultCapacity)
 
   def getSortedIterator(): RowBatchSorterIterator = {
-    priorityQueue.reset(sortedBatches.size)
-    sortedBatches.foreach { rb =>
-      rb.rowIdx = 0
-      priorityQueue.add(rb)
-    }
+    sort()
 
     new RowBatchSorterIterator {
 
       val rb: RowBatch = RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
+      var i: Int = 0
+      val total: Int = all.length
 
-      override def hasNext(): Boolean = !priorityQueue.isEmpty
+      override def hasNext(): Boolean = i < total
 
       @throws[IOException]
       override def loadNext(): Unit = {
         rb.reset(false)
         var rowIdx: Int = 0
 
-        while (rowIdx < defaultCapacity && !priorityQueue.isEmpty) {
-          val nextLineBatch = priorityQueue.remove()
+        while (rowIdx < defaultCapacity && i < total) {
+          val rbAndRow = all(i)
+          val batch = rbAndRow >>> 16
+          val line = rbAndRow & 65535
 
-          batchCopier.copy(nextLineBatch, nextLineBatch.sorted(nextLineBatch.rowIdx), rb, rowIdx)
+          batchCopier.copy(sortedBatches(batch), line, rb, rowIdx)
 
-          nextLineBatch.rowIdx += 1
-          if (nextLineBatch.rowIdx < nextLineBatch.size) {
-            priorityQueue.add(nextLineBatch)
-          }
-
+          i += 1
           rowIdx += 1
         }
       }
@@ -77,16 +182,4 @@ case class InMemoryBatchSorter(
       override def currentBatch: RowBatch = rb
     }
   }
-
-  def free(): Unit = {
-    priorityQueue.clear()
-  }
-
-  def reset(): Unit = {
-    priorityQueue.clear()
-  }
-
-  // def getMemoryUsage(): Long = {
-  //
-  // }
 }

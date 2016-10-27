@@ -17,6 +17,6 @@
 
 package org.apache.spark.sql.catalyst.vector;
 
-public interface IComp {
+public interface IntComparator {
   int compare(int i1, int i2);
 }

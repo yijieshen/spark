@@ -18,9 +18,8 @@
 package org.apache.spark.sql.execution.vector;
 
 import java.io.IOException;
-import java.util.Comparator;
 
-import org.apache.spark.sql.catalyst.vector.IComp;
+import org.apache.spark.sql.catalyst.vector.IntComparator;
 import scala.collection.Iterator;
 import scala.math.Ordering;
 
@@ -97,10 +96,10 @@ final class UnsafeExternalRowBatchSorter {
     UnsafeRow[] rows = rowVectorComputer.apply(rb).columns[0].rowVector;
     final long[] prefixes = prefixComputer.apply(rb).columns[0].longVector;
 
-    IComp innerBatchComparator;
+    IntComparator innerBatchComparator;
     if (needFurtherCompare) {
       innerBatchFullComparator.reset(rb);
-      innerBatchComparator = new IComp() {
+      innerBatchComparator = new IntComparator() {
         @Override
         public int compare(int i1, int i2) {
           int cmp = prefixComparator.compare(prefixes[i1], prefixes[i2]);
@@ -111,7 +110,7 @@ final class UnsafeExternalRowBatchSorter {
         }
       };
     } else {
-      innerBatchComparator = new IComp() {
+      innerBatchComparator = new IntComparator() {
         @Override
         public int compare(int i1, int i2) {
           return prefixComparator.compare(prefixes[i1], prefixes[i2]);

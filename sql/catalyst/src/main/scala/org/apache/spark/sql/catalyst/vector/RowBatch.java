@@ -20,8 +20,6 @@ package org.apache.spark.sql.catalyst.vector;
 import java.io.*;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
@@ -223,7 +221,7 @@ public class RowBatch implements Serializable {
     };
   }
 
-  public void sort(IComp comparator) {
+  public void sort(IntComparator comparator) {
     sortedInUse = true;
     if (selectedInUse) {
       for (int i = 0; i < size; i ++) {
@@ -234,12 +232,12 @@ public class RowBatch implements Serializable {
         sorted[i] = i;
       }
     }
-    TSort.sort(sorted, 0, size, comparator, null, 0, 0);
+    IntArrayTimSort.sort(sorted, 0, size, comparator, null, 0, 0);
   }
 
   public void sort(final int[] sortedBy) {
-    IComp comparator =
-        new IComp() {
+    IntComparator comparator =
+        new IntComparator() {
           @Override
           public int compare(int i1, int i2) {
             int x = sortedBy[i1];

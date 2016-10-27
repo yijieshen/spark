@@ -19,13 +19,13 @@ package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen._
-import org.apache.spark.sql.catalyst.vector.{IComp, RowBatch}
+import org.apache.spark.sql.catalyst.vector.{IntComparator, RowBatch}
 import org.apache.spark.sql.types._
 
 /**
   * Inherits some default implementation for Java from `Ordering[Integer]`
   */
-class BatchOrdering extends IComp {
+class BatchOrdering extends IntComparator {
   def compare(a: Int, b: Int): Int = {
     throw new UnsupportedOperationException
   }
