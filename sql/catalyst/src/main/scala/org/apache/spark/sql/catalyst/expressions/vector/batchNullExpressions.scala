@@ -47,14 +47,15 @@ case class BatchCoalesce(
     val sel = ctx.freshName("sel")
     val selectedInUse = ctx.freshName("selectedInUse")
     val tmp = ctx.freshName("tmp")
-    val resultV = ctx.freshName("resultV")
+
+    val get = ctx.getMethodName(dataType)
+    val put = ctx.putMethodName(dataType)
 
     s"""
       int[] $tmp = new int[${ctx.getBatchCapacity}];
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       ColumnVector ${ev.value} = null;
-      ${ctx.javaType(dataType)}[] $resultV;
 
       ${firstEval.code}
       if (${firstEval.value}.noNulls) {
@@ -62,7 +63,6 @@ case class BatchCoalesce(
       } else {
         ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
         ${ev.value}.noNulls = false;
-        $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
         // initiate $tmp array to denote rows in needed (set to 1)
         if ($selectedInUse) {
@@ -78,15 +78,15 @@ case class BatchCoalesce(
           if ($selectedInUse) {
             for (int j = 0; j < $batchSize; j ++) {
               int i = $sel[j];
-              if ($tmp[i] == 1 && !${firstEval.value}.isNull[i]) {
-                $resultV[i] = ${firstEval.value}.${ctx.vectorName(dataType)}[i];
+              if ($tmp[i] == 1 && !${firstEval.value}.isNullAt(i)) {
+                ${ev.value}.$put(i, ${firstEval.value}.$get(i));
                 $tmp[i] = 0;
               }
             }
           } else {
             for (int i = 0; i < $batchSize; i ++) {
-              if ($tmp[i] == 1 && !${firstEval.value}.isNull[i]) {
-                $resultV[i] = ${firstEval.value}.${ctx.vectorName(dataType)}[i];
+              if ($tmp[i] == 1 && !${firstEval.value}.isNullAt(i)) {
+                ${ev.value}.$put(i, ${firstEval.value}.$get(i));
                 $tmp[i] = 0;
               }
             }
@@ -108,14 +108,14 @@ case class BatchCoalesce(
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
                   if ($tmp[i] == 1) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[0];
+                    ${ev.value}.$put(i, ${curEval.value}.$get(0));
                     $tmp[i] = 0;
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
                   if ($tmp[i] == 1) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[0];
+                    ${ev.value}.$put(i, ${curEval.value}.$get(0));
                     $tmp[i] = 0;
                   }
                 }
@@ -125,14 +125,14 @@ case class BatchCoalesce(
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
                   if ($tmp[i] == 1) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[i];
+                    ${ev.value}.$put(i, ${curEval.value}.$get(i));
                     $tmp[i] = 0;
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
                   if ($tmp[i] == 1) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[i];
+                    ${ev.value}.$put(i, ${curEval.value}.$get(i));
                     $tmp[i] = 0;
                   }
                 }
@@ -145,15 +145,15 @@ case class BatchCoalesce(
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
-                  if ($tmp[i] == 1 && !${curEval.value}.isNull[i]) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[i];
+                  if ($tmp[i] == 1 && !${curEval.value}.isNullAt(i)) {
+                    ${ev.value}.$put(i, ${curEval.value}.$get(i));
                     $tmp[i] = 0;
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
-                  if ($tmp[i] == 1 && !${curEval.value}.isNull[i]) {
-                    $resultV[i] = ${curEval.value}.${ctx.vectorName(dataType)}[i];
+                  if ($tmp[i] == 1 && !${curEval.value}.isNullAt(i)) {
+                    ${ev.value}.$put(i, ${curEval.value}.$get(i));
                     $tmp[i] = 0;
                   }
                 }

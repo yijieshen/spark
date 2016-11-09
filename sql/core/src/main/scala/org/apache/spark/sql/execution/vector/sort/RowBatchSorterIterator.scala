@@ -29,4 +29,6 @@ abstract class RowBatchSorterIterator {
   def loadNext(): Unit
 
   def currentBatch: RowBatch
+
+  override def clone(): AnyRef = super.clone()
 }

@@ -301,8 +301,8 @@ class HashBasedBatchAggregateIterator(
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
         numInputRows += currentBatch.size
-        val groupingKeys = keyWrapper(currentBatch).columns(0).rowVector
-        val hashCodes = hasher(currentBatch).columns(0).intVector
+        val groupingKeys = keyWrapper(currentBatch).columns(0).getRowVector
+        val hashCodes = hasher(currentBatch).columns(0).getIntVector
 
         // TODO no enough spaces for hashmap to extend
         if (currentBatch.selectedInUse) {
@@ -327,7 +327,7 @@ class HashBasedBatchAggregateIterator(
       while (inputIter.hasNext) {
         val currentBatch = inputIter.next()
         numInputRows += currentBatch.size
-        val hashCodes = hasher(currentBatch).columns(0).intVector
+        val hashCodes = hasher(currentBatch).columns(0).getIntVector
 
         vhm.insertAll(hashCodes, currentBatch)
       }

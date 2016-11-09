@@ -18,6 +18,7 @@
 package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.memory.MemoryMode
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
@@ -26,7 +27,7 @@ class BatchPredicateSuite extends SparkFunSuite {
 
   test("<= < >= >") {
     val dts: Seq[DataType] = IntegerType :: DoubleType :: StringType :: Nil
-    val rb = RowBatch.create(dts.toArray, 5)
+    val rb = RowBatch.create(dts.toArray, 5, MemoryMode.ON_HEAP)
     rb.columns(0).putInt(0, 1)
     rb.columns(0).putInt(1, 2)
     rb.columns(0).putInt(2, 3)
@@ -69,7 +70,7 @@ class BatchPredicateSuite extends SparkFunSuite {
 
   test("And") {
     val dts: Seq[DataType] = IntegerType :: DoubleType :: StringType :: Nil
-    val rb = RowBatch.create(dts.toArray, 5)
+    val rb = RowBatch.create(dts.toArray, 5, MemoryMode.ON_HEAP)
     rb.columns(0).putInt(0, 1)
     rb.columns(0).putInt(1, 2)
     rb.columns(0).putInt(2, 3)
@@ -97,7 +98,7 @@ class BatchPredicateSuite extends SparkFunSuite {
 
   test("BatchIn") {
     val dts: Seq[DataType] = IntegerType :: StringType :: Nil
-    val rb = RowBatch.create(dts.toArray, 5)
+    val rb = RowBatch.create(dts.toArray, 5, MemoryMode.ON_HEAP)
     rb.columns(0).putInt(0, 1)
     rb.columns(0).putInt(1, 2)
     rb.columns(0).putInt(2, 3)

@@ -504,37 +504,6 @@ private[hive] trait HiveInspectors {
     }
 
   /**
-    * Builds specific unwrappers ahead of time according to object inspector
-    * types to avoid pattern matching and branching costs per row.
-    */
-  def unwrapperForCV(field: HiveStructField): (Any, ColumnVector, Int) => Unit =
-    field.getFieldObjectInspector match {
-      case oi: BooleanObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.put(rowId, oi.get(value))
-      case oi: ByteObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.put(rowId, oi.get(value))
-      case oi: ShortObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.put(rowId, oi.get(value))
-      case oi: IntObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.putInt(rowId, oi.get(value))
-      case oi: LongObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.putLong(rowId, oi.get(value))
-      case oi: FloatObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.put(rowId, oi.get(value))
-      case oi: DoubleObjectInspector =>
-        (value: Any, cv: ColumnVector, rowId: Int) =>
-          cv.putDouble(rowId, oi.get(value))
-      case oi =>
-        (value: Any, cv: ColumnVector, rowId: Int) => cv.put(rowId, unwrap(value, oi))
-    }
-
-  /**
    * Converts native catalyst types to the types expected by Hive
    * @param a the value to be wrapped
    * @param oi This ObjectInspector associated with the value returned by this function, and

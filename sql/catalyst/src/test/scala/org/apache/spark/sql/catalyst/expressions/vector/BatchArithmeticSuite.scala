@@ -18,6 +18,7 @@
 package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.memory.MemoryMode
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.{DataType, LongType}
@@ -25,7 +26,7 @@ import org.apache.spark.sql.types.{DataType, LongType}
 class BatchArithmeticSuite extends SparkFunSuite {
 
   val dts: Seq[DataType] = LongType :: Nil
-  val rb = RowBatch.create(dts.toArray, 5)
+  val rb = RowBatch.create(dts.toArray, 5, MemoryMode.ON_HEAP)
   rb.columns(0).putLong(0, 1028)
   rb.columns(0).putLong(1, 1029)
   rb.columns(0).putLong(2, 1030)
@@ -50,10 +51,10 @@ class BatchArithmeticSuite extends SparkFunSuite {
 
     val nrb = plan.apply(rb)
     assert(nrb.size === 5)
-    assert(nrb.columns(0).intVector(0) === planB(row1).getInt(0))
-    assert(nrb.columns(0).intVector(1) === planB(row2).getInt(0))
-    assert(nrb.columns(0).intVector(2) === planB(row3).getInt(0))
-    assert(nrb.columns(0).intVector(3) === planB(row4).getInt(0))
-    assert(nrb.columns(0).intVector(4) === planB(row5).getInt(0))
+    assert(nrb.columns(0).getIntVector()(0) === planB(row1).getInt(0))
+    assert(nrb.columns(0).getIntVector()(1) === planB(row2).getInt(0))
+    assert(nrb.columns(0).getIntVector()(2) === planB(row3).getInt(0))
+    assert(nrb.columns(0).getIntVector()(3) === planB(row4).getInt(0))
+    assert(nrb.columns(0).getIntVector()(4) === planB(row5).getInt(0))
   }
 }

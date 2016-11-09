@@ -93,8 +93,8 @@ final class UnsafeExternalRowBatchSorter {
 
   @VisibleForTesting
   void insertBatch(RowBatch rb) throws IOException {
-    UnsafeRow[] rows = rowVectorComputer.apply(rb).columns[0].rowVector;
-    final long[] prefixes = prefixComputer.apply(rb).columns[0].longVector;
+    UnsafeRow[] rows = rowVectorComputer.apply(rb).columns[0].getRowVector();
+    final long[] prefixes = prefixComputer.apply(rb).columns[0].getLongVector();
 
     IntComparator innerBatchComparator;
     if (needFurtherCompare) {

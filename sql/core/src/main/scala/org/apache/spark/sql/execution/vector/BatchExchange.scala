@@ -158,7 +158,7 @@ case class BatchExchange(
               currentBatch = iterator.next()
             }
             if (currentBatch.size != 0) {
-              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).intVector
+              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).getIntVector
               currentBatch.sort(currentPartitionKeys)
 
               currentPID = -1

@@ -20,6 +20,7 @@ package org.apache.spark.sql.hive.orc;
 import org.apache.hadoop.hive.ql.io.orc.InStream;
 import org.apache.hadoop.hive.ql.io.orc.PositionProvider;
 import org.apache.spark.sql.catalyst.vector.ColumnVector;
+import org.apache.spark.sql.catalyst.vector.OnColumnVector;
 import org.apache.spark.sql.catalyst.vector.RowBatch;
 
 import java.io.EOFException;
@@ -130,7 +131,7 @@ public class TreeReaderFactory {
      * @throws IOException
      */
     public Object nextVector(Object previousVector, long batchSize, int capacity) throws IOException {
-      ColumnVector result = (ColumnVector) previousVector;
+      OnColumnVector result = (OnColumnVector) previousVector;
       if (present != null) {
         // Set noNulls and isNull vector of the ColumnVector based on
         // present stream
@@ -203,11 +204,11 @@ public class TreeReaderFactory {
 
     @Override
     public Object nextVector(Object previousVector, long batchSize, int capacity) throws IOException {
-      final ColumnVector result;
+      final OnColumnVector result;
       if (previousVector == null) {
-        result = ColumnVector.genIntegerColumnVector(capacity);
+        result = OnColumnVector.genIntCV(capacity);
       } else {
-        result = (ColumnVector) previousVector;
+        result = (OnColumnVector) previousVector;
       }
 
       // Read present/isNull stream
@@ -275,11 +276,11 @@ public class TreeReaderFactory {
 
     @Override
     public Object nextVector(Object previousVector, long batchSize, int capacity) throws IOException {
-      final ColumnVector result;
+      final OnColumnVector result;
       if (previousVector == null) {
-        result = ColumnVector.genLongColumnVector(capacity);
+        result = OnColumnVector.genLongCV(capacity);
       } else {
-        result = (ColumnVector) previousVector;
+        result = (OnColumnVector) previousVector;
       }
 
       // Read present/isNull stream
@@ -334,11 +335,11 @@ public class TreeReaderFactory {
 
     @Override
     public Object nextVector(Object previousVector, final long batchSize, int capacity) throws IOException {
-      final ColumnVector result;
+      final OnColumnVector result;
       if (previousVector == null) {
-        result = ColumnVector.genDoubleColumnVector(capacity);
+        result = OnColumnVector.genDoubleCV(capacity);
       } else {
-        result = (ColumnVector) previousVector;
+        result = (OnColumnVector) previousVector;
       }
 
       // Read present/isNull stream
@@ -481,7 +482,7 @@ public class TreeReaderFactory {
   protected static class StringDirectTreeReader extends TreeReader {
     protected InStream stream;
     protected IntegerReader lengths;
-    private ColumnVector scratchlcv;
+    private OnColumnVector scratchlcv;
 
     StringDirectTreeReader(int columnId) throws IOException {
       this(columnId, null, null, null, null);
@@ -532,15 +533,15 @@ public class TreeReaderFactory {
 
     @Override
     public Object nextVector(Object previousVector, long batchSize, int capacity) throws IOException {
-      final ColumnVector result;
+      final OnColumnVector result;
       if (previousVector == null) {
-        result = ColumnVector.genStringColumnVector(capacity);
+        result = OnColumnVector.genStringCV(capacity);
       } else {
-        result = (ColumnVector) previousVector;
+        result = (OnColumnVector) previousVector;
       }
 
       if (scratchlcv == null) {
-        this.scratchlcv = ColumnVector.genIntegerColumnVector(capacity);
+        this.scratchlcv = OnColumnVector.genIntCV(capacity);
       }
 
       // Read present/isNull stream
@@ -571,8 +572,8 @@ public class TreeReaderFactory {
 
     private static byte[] commonReadByteArrays(
         InStream stream, IntegerReader lengths,
-        ColumnVector scratchlcv,
-        ColumnVector result, long batchSize) throws IOException {
+        OnColumnVector scratchlcv,
+        OnColumnVector result, long batchSize) throws IOException {
       // Read lengths
       scratchlcv.isNull = result.isNull;  // Notice we are replacing the isNull vector here...
       lengths.nextIntVector(scratchlcv, batchSize);
@@ -608,8 +609,8 @@ public class TreeReaderFactory {
     // This method has the common code for reading in bytes into a BytesColumnVector.
     public static void readOrcByteArrays(
         InStream stream, IntegerReader lengths,
-        ColumnVector scratchlcv,
-        ColumnVector result, long batchSize) throws IOException {
+        OnColumnVector scratchlcv,
+        OnColumnVector result, long batchSize) throws IOException {
 
       byte[] allBytes = commonReadByteArrays(stream, lengths, scratchlcv, result, batchSize);
 
@@ -648,7 +649,7 @@ public class TreeReaderFactory {
     protected IntegerReader reader;
 
     private byte[] dictionaryBufferInBytesCache = null;
-    private ColumnVector scratchlcv;
+    private OnColumnVector scratchlcv;
 
     StringDictionaryTreeReader(int columnId) throws IOException {
       this(columnId, null, null, null, null, null);
@@ -752,17 +753,17 @@ public class TreeReaderFactory {
 
     @Override
     public Object nextVector(Object previousVector, long batchSize, int capacity) throws IOException {
-      final ColumnVector result;
+      final OnColumnVector result;
       int offset;
       int length;
       if (previousVector == null) {
-        result = ColumnVector.genStringColumnVector(capacity);
+        result = OnColumnVector.genStringCV(capacity);
       } else {
-        result = (ColumnVector) previousVector;
+        result = (OnColumnVector) previousVector;
       }
 
       if (scratchlcv == null) {
-        this.scratchlcv = ColumnVector.genIntegerColumnVector(capacity);
+        this.scratchlcv = OnColumnVector.genIntCV(capacity);
       }
 
       // Read present/isNull stream

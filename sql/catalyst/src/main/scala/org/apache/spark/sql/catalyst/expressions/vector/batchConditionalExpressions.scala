@@ -54,9 +54,8 @@ case class BatchIf(
     val unselectedSize = ctx.freshName("unselectedSize")
     val unselected = ctx.freshName("unselected")
 
-    val trueV = ctx.freshName("trueV")
-    val falseV = ctx.freshName("falseV")
-    val resultV = ctx.freshName("resultV")
+    val get = ctx.getMethodName(dataType)
+    val put = ctx.putMethodName(dataType)
 
     // TODO: this only works when trueValue/falseValue is of non-String DataType
     s"""
@@ -113,11 +112,6 @@ case class BatchIf(
         ${trueEval.code}
         ${falseEval.code}
         ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
-        ${ctx.vectorArrayType(trueValue.dataType)} $trueV =
-          ${trueEval.value}.${ctx.vectorName(trueValue.dataType)};
-        ${ctx.vectorArrayType(falseValue.dataType)} $falseV =
-          ${falseEval.value}.${ctx.vectorName(falseValue.dataType)};
-        ${ctx.vectorArrayType(dataType)} $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
         ${ev.value}.noNulls = ${trueEval.value}.noNulls && ${falseEval.value}.noNulls;
 
@@ -126,25 +120,25 @@ case class BatchIf(
           if (${trueEval.value}.isRepeating) {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              $resultV[i] = $trueV[0];
+              ${ev.value}.$put(i, ${trueEval.value}.$get(0));
             }
           } else {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              $resultV[i] = $trueV[i];
+              ${ev.value}.$put(i, ${trueEval.value}.$get(i));
             }
           }
         } else { // have nulls in true expressions
           if (${trueEval.value}.isRepeating) {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              ${ev.value}.isNull[i] = true;
+              ${ev.value}.putNull(i);
             }
           } else {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              ${ev.value}.isNull[i] = ${trueEval.value}.isNull[i];
-              $resultV[i] = $trueV[i];
+              ${ev.value}.setNull(i, ${trueEval.value}.isNullAt(i));
+              ${ev.value}.$put(i, ${trueEval.value}.$get(i));
             }
           }
         }
@@ -154,25 +148,25 @@ case class BatchIf(
           if (${falseEval.value}.isRepeating) {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              $resultV[i] = $falseV[0];
+              ${ev.value}.$put(i, ${falseEval.value}.$get(0));
             }
           } else {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              $resultV[i] = $falseV[i];
+              ${ev.value}.$put(i, ${falseEval.value}.$get(i));
             }
           }
         } else { // have nulls in false expressions
           if (${falseEval.value}.isRepeating) {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              ${ev.value}.isNull[i] = true;
+              ${ev.value}.putNull(i);
             }
           } else {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              ${ev.value}.isNull[i] = ${falseEval.value}.isNull[i];
-              $resultV[i] = $falseV[i];
+              ${ev.value}.setNull(i, ${falseEval.value}.isNullAt(i));
+              ${ev.value}.$put(i, ${falseEval.value}.$get(i));
             }
           }
         }
@@ -222,9 +216,8 @@ case class BatchCaseWhen(
     val unselectedSize = ctx.freshName("unselectedSize")
     val unselected = ctx.freshName("unselected")
 
-    val trueV = ctx.freshName("trueV")
-    val falseV = ctx.freshName("falseV")
-    val resultV = ctx.freshName("resultV")
+    val get = ctx.getMethodName(dataType)
+    val put = ctx.putMethodName(dataType)
 
     // TODO: this only works when trueValue/falseValue is of non-String DataType
     s"""
@@ -281,11 +274,6 @@ case class BatchCaseWhen(
         ${trueEval.code}
         ${falseEval.code}
         ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
-        ${ctx.vectorArrayType(trueValue.dataType)} $trueV =
-          ${trueEval.value}.${ctx.vectorName(trueValue.dataType)};
-        ${ctx.vectorArrayType(falseValue.dataType)} $falseV =
-          ${falseEval.value}.${ctx.vectorName(falseValue.dataType)};
-        ${ctx.vectorArrayType(dataType)} $resultV = ${ev.value}.${ctx.vectorName(dataType)};
 
         ${ev.value}.noNulls = ${trueEval.value}.noNulls && ${falseEval.value}.noNulls;
 
@@ -294,25 +282,25 @@ case class BatchCaseWhen(
           if (${trueEval.value}.isRepeating) {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              $resultV[i] = $trueV[0];
+              ${ev.value}.$put(i, ${trueEval.value}.$get(0));
             }
           } else {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              $resultV[i] = $trueV[i];
+              ${ev.value}.$put(i, ${trueEval.value}.$get(i));
             }
           }
         } else { // have nulls in true expressions
           if (${trueEval.value}.isRepeating) {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              ${ev.value}.isNull[i] = true;
+              ${ev.value}.putNull(i);
             }
           } else {
             for (int j = 0; j < $sizeAfterCondition; j ++) {
               int i = $selectedAfterCondition[j];
-              ${ev.value}.isNull[i] = ${trueEval.value}.isNull[i];
-              $resultV[i] = $trueV[i];
+              ${ev.value}.setNull(i, ${trueEval.value}.isNullAt(i));
+              ${ev.value}.$put(i, ${trueEval.value}.$get(i));
             }
           }
         }
@@ -322,25 +310,25 @@ case class BatchCaseWhen(
           if (${falseEval.value}.isRepeating) {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              $resultV[i] = $falseV[0];
+              ${ev.value}.$put(i, ${falseEval.value}.$get(0));
             }
           } else {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              $resultV[i] = $falseV[i];
+              ${ev.value}.$put(i, ${falseEval.value}.$get(i));
             }
           }
         } else { // have nulls in false expressions
           if (${falseEval.value}.isRepeating) {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              ${ev.value}.isNull[i] = true;
+              ${ev.value}.putNull(i);
             }
           } else {
             for (int j = 0; j < $unselectedSize; j ++) {
               int i = $unselected[j];
-              ${ev.value}.isNull[i] = ${falseEval.value}.isNull[i];
-              $resultV[i] = $falseV[i];
+              ${ev.value}.setNull(i, ${falseEval.value}.isNullAt(i));
+              ${ev.value}.$put(i, ${falseEval.value}.$get(i));
             }
           }
         }

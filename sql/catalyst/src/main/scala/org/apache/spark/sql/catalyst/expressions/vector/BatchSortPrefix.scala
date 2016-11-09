@@ -47,9 +47,9 @@ case class BatchSortPrefix(
     val batchSize = ctx.freshName("batchSize")
     val sel = ctx.freshName("sel")
     val selectedInUse = ctx.freshName("selectedInUse")
-    val childV = ctx.freshName("childV")
-    val resultV = ctx.freshName("resultV")
     val childStr = ctx.freshName("childStr")
+    val get = ctx.getMethodName(child.dataType)
+    val put = ctx.putMethodName(LongType)
 
     val DoublePrefixCmp = classOf[DoublePrefixComparator].getName
     val doubleMin = DoublePrefixComparator.computePrefix(Double.NegativeInfinity)
@@ -57,45 +57,45 @@ case class BatchSortPrefix(
     val prefixGenCode = child.dataType match {
       case StringType =>
         s"""
-          UTF8String $childStr = new UTF8String();
+          UTF8String $childStr;
           if (${eval.value}.noNulls) {
             if (${eval.value}.isRepeating) {
-              $childStr.update($childV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
-              $resultV[0] = $childStr.getPrefix();
+              $childStr = ${eval.value}.$get(0);
+              ${ev.value}.$put(0, $childStr.getPrefix());
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                $childStr.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
-                $resultV[i] = $childStr.getPrefix();
+                $childStr = ${eval.value}.$get(i);
+                ${ev.value}.$put(i, $childStr.getPrefix());
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                $childStr.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
-                $resultV[i] = $childStr.getPrefix();
+                $childStr = ${eval.value}.$get(i);
+                ${ev.value}.$put(i, $childStr.getPrefix());
               }
             }
           } else {
             if (${eval.value}.isRepeating) {
-              $resultV[0] = 0L;
+              ${ev.value}.$put(0, 0L);
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = 0L;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, 0L);
                 } else {
-                  $childStr.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
-                  $resultV[i] = $childStr.getPrefix();
+                  $childStr = ${eval.value}.$get(i);
+                  ${ev.value}.$put(i, $childStr.getPrefix());
                 }
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = 0L;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, 0L);
                 } else {
-                  $childStr.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
-                  $resultV[i] = $childStr.getPrefix();
+                  $childStr = ${eval.value}.$get(i);
+                  ${ev.value}.$put(i, $childStr.getPrefix());
                 }
               }
             }
@@ -105,37 +105,37 @@ case class BatchSortPrefix(
         s"""
           if (${eval.value}.noNulls) {
             if (${eval.value}.isRepeating) {
-              $resultV[0] = (long) $childV[0];
+              ${ev.value}.$put(0, (long) ${eval.value}.$get(0));
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                $resultV[i] = (long) $childV[i];
+                ${ev.value}.$put(i, (long) ${eval.value}.$get(i));
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                $resultV[i] = (long) $childV[i];
+                ${ev.value}.$put(i, (long) ${eval.value}.$get(i));
               }
             }
           } else {
             if (${eval.value}.isRepeating) {
-              $resultV[0] = ${Long.MinValue}L;
+              ${ev.value}.$put(0, ${Long.MinValue}L);
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = ${Long.MinValue}L;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, ${Long.MinValue}L);
                 } else {
-                  $resultV[i] = (long) $childV[i];
+                  ${ev.value}.$put(i, (long) ${eval.value}.$get(i));
                 }
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = ${Long.MinValue}L;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, ${Long.MinValue}L);
                 } else {
-                  $resultV[i] = (long) $childV[i];
+                  ${ev.value}.$put(i, (long) ${eval.value}.$get(i));
                 }
               }
             }
@@ -145,37 +145,39 @@ case class BatchSortPrefix(
         s"""
           if (${eval.value}.noNulls) {
             if (${eval.value}.isRepeating) {
-              $resultV[0] = $DoublePrefixCmp.computePrefix((double) $childV[0]);
+              ${ev.value}.$put(0, $DoublePrefixCmp.computePrefix((double) ${eval.value}.$get(0)));
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                $resultV[i] = $DoublePrefixCmp.computePrefix((double) $childV[i]);
+                ${ev.value}.$put(i, $DoublePrefixCmp.computePrefix((double) ${eval.value}.$get(i)));
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                $resultV[i] = $DoublePrefixCmp.computePrefix((double) $childV[i]);
+                ${ev.value}.$put(i, $DoublePrefixCmp.computePrefix((double) ${eval.value}.$get(i)));
               }
             }
           } else {
             if (${eval.value}.isRepeating) {
-              $resultV[0] = $doubleMin;
+              ${ev.value}.$put(0, $doubleMin);
               ${ev.value}.isRepeating = true;
             } else if ($selectedInUse) {
               for (int j = 0; j < $batchSize; j ++) {
                 int i = $sel[j];
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = $doubleMin;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, $doubleMin);
                 } else {
-                  $resultV[i] = $DoublePrefixCmp.computePrefix((double) $childV[i]);
+                  ${ev.value}.$put(i,
+                    $DoublePrefixCmp.computePrefix((double) ${eval.value}.$get(i)));
                 }
               }
             } else {
               for (int i = 0; i < $batchSize; i ++) {
-                if (${eval.value}.isNull[i]) {
-                  $resultV[i] = $doubleMin;
+                if (${eval.value}.isNullAt(i)) {
+                  ${ev.value}.$put(i, $doubleMin);
                 } else {
-                  $resultV[i] = $DoublePrefixCmp.computePrefix((double) $childV[i]);
+                  ${ev.value}.$put(i,
+                    $DoublePrefixCmp.computePrefix((double) ${eval.value}.$get(i)));
                 }
               }
             }
@@ -189,11 +191,8 @@ case class BatchSortPrefix(
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
-      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", LongType)};
+      OnColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", LongType)};
       ${ev.value}.noNulls = true;
-      ${ctx.vectorArrayType(child.dataType)} $childV =
-        ${eval.value}.${ctx.vectorName(child.dataType)};
-      long[] $resultV = ${ev.value}.longVector;
       $prefixGenCode
     """
   }

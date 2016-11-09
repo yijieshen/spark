@@ -51,20 +51,18 @@ object GenerateInterBatchOrdering extends CodeGenerator[Seq[SortOrder], InterBat
       val dt = order.child.dataType
       val pa = ctx.freshName("primitiveA")
       val pb = ctx.freshName("primitiveB")
-      val childLV = ctx.freshName("childLV")
-      val childRV = ctx.freshName("childRV")
+      val get = ctx.getMethodName(dt)
+
       dt match {
         case StringType =>
           s"""
             ${evalL.code}
             ${evalR.code}
-            ${ctx.vectorArrayType(dt)} $childLV = ${evalL.value}.${ctx.vectorName(dt)};
-            ${ctx.vectorArrayType(dt)} $childRV = ${evalR.value}.${ctx.vectorName(dt)};
-            UTF8String $pa = new UTF8String();
-            UTF8String $pb = new UTF8String();
+            UTF8String $pa;
+            UTF8String $pb;
 
-            $pa.update($childLV[li], ${evalL.value}.starts[li], ${evalL.value}.lengths[li]);
-            $pb.update($childRV[ri], ${evalR.value}.starts[ri], ${evalR.value}.lengths[ri]);
+            $pa = ${evalL.value}.$get(li);
+            $pb = ${evalR.value}.$get(ri);
             comp = ${ctx.genComp(dt, pa, pb)};
             if (comp != 0) {
               return ${if (asc) "comp" else "-comp"};
@@ -74,12 +72,10 @@ object GenerateInterBatchOrdering extends CodeGenerator[Seq[SortOrder], InterBat
           s"""
             ${evalL.code}
             ${evalR.code}
-            ${ctx.vectorArrayType(dt)} $childLV = ${evalL.value}.${ctx.vectorName(dt)};
-            ${ctx.vectorArrayType(dt)} $childRV = ${evalR.value}.${ctx.vectorName(dt)};
             ${ctx.javaType(dt)} $pa;
             ${ctx.javaType(dt)} $pb;
-            $pa = $childLV[li];
-            $pb = $childRV[ri];
+            $pa = ${evalL.value}.$get(li);
+            $pb = ${evalR.value}.$get(ri);
             comp = ${ctx.genComp(dt, pa, pb)};
             if (comp != 0) {
               return ${if (asc) "comp" else "-comp"};

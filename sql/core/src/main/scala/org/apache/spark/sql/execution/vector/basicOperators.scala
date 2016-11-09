@@ -18,14 +18,15 @@
 package org.apache.spark.sql.execution.vector
 
 import scala.collection.JavaConverters._
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchProjection, GenerateBatchPredicate}
 import org.apache.spark.sql.catalyst.vector.RowBatch
-import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.execution.{LeafNode, SparkPlan, UnaryNode}
+import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.types.LongType
 
 case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) extends UnaryNode {
@@ -190,7 +191,7 @@ case class BatchRange(
               var i = 0
               while (number < safePartitionEnd && i < rb.capacity && !overflow) {
                 val ret = number
-                rb.columns(0).longVector(i) = number
+                rb.columns(0).getLongVector()(i) = number
                 number += step
                 if (number < ret ^ step < 0) {
                   overflow = true
@@ -203,7 +204,7 @@ case class BatchRange(
               var i = 0
               while (number > safePartitionEnd && i < rb.capacity && !overflow) {
                 val ret = number
-                rb.columns(0).longVector(i) = number
+                rb.columns(0).getLongVector()(i) = number
                 number += step
                 if (number < ret ^ step < 0) {
                   overflow = true

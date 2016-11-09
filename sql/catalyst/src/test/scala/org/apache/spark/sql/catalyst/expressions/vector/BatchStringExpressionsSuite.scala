@@ -18,6 +18,7 @@
 package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.SparkFunSuite
+import org.apache.spark.memory.MemoryMode
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
@@ -25,7 +26,7 @@ import org.apache.spark.sql.types._
 class BatchStringExpressionsSuite extends SparkFunSuite {
 
   val dts: Seq[DataType] = StringType :: Nil
-  val rb = RowBatch.create(dts.toArray, 5)
+  val rb = RowBatch.create(dts.toArray, 5, MemoryMode.ON_HEAP)
   rb.columns(0).putString(0, "abcd")
   rb.columns(0).putString(1, "def")
   rb.columns(0).putString(2, "abcdef")

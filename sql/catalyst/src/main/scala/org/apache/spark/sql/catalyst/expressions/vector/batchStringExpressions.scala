@@ -24,7 +24,7 @@ import org.apache.commons.lang3.StringEscapeUtils
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, GeneratedBatchExpressionCode}
 import org.apache.spark.sql.catalyst.util.StringUtils
-import org.apache.spark.sql.types.DataType
+import org.apache.spark.sql.types.{DataType, StringType}
 import org.apache.spark.unsafe.types.UTF8String
 
 abstract class BatchStringPredicate extends BinaryBatchExpression {
@@ -39,10 +39,9 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
     val n = ctx.freshName("n")
     val newSize = ctx.freshName("newSize")
     val sel = ctx.freshName("sel")
-    val leftV = ctx.freshName("leftV")
-    val rightV = ctx.freshName("rightV")
     val leftStr = ctx.freshName("leftStr")
     val rightStr = ctx.freshName("rightStr")
+    val get = ctx.getMethodName(StringType)
 
     s"""
       ${eval1.code}
@@ -50,13 +49,8 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
       int $n = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-      UTF8String $leftStr = new UTF8String();
-      UTF8String $rightStr = new UTF8String();
-
-      ${ctx.vectorArrayType(left.dataType)} $leftV =
-        ${eval1.value}.${ctx.vectorName(left.dataType)};
-      ${ctx.vectorArrayType(right.dataType)} $rightV =
-        ${eval2.value}.${ctx.vectorName(right.dataType)};
+      UTF8String $leftStr;
+      UTF8String $rightStr;
 
       // filter rows with NULL on left input
       int $newSize;
@@ -74,18 +68,18 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
 
       // All rows with nulls has been filtered out, so just do normal filter for no-null case
       if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-        $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
-        $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+        $leftStr = ${eval1.value}.$get(0);
+        $rightStr = ${eval2.value}.$get(0);
         if (!$leftStr.$function($rightStr)) {
           ${ctx.INPUT_ROWBATCH}.size = 0;
         }
       } else if (${eval1.value}.isRepeating) {
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
           $newSize = 0;
-          $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
+          $leftStr = ${eval1.value}.$get(0);
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+            $rightStr = ${eval2.value}.$get(i);
             if ($leftStr.$function($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -93,9 +87,9 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
           ${ctx.INPUT_ROWBATCH}.size = $newSize;
         } else {
           $newSize = 0;
-          $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
+          $leftStr = ${eval1.value}.$get(0);
           for (int i = 0; i < $n; i ++) {
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+            $rightStr = ${eval2.value}.$get(i);
             if ($leftStr.$function($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -108,10 +102,10 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
       } else if (${eval2.value}.isRepeating) {
         if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
           $newSize = 0;
-          $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+          $rightStr = ${eval2.value}.$get(0);
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
+            $leftStr = ${eval1.value}.$get(i);
             if ($leftStr.$function($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -119,9 +113,9 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
           ${ctx.INPUT_ROWBATCH}.size = $newSize;
         } else {
           $newSize = 0;
-          $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+          $rightStr = ${eval2.value}.$get(0);
           for (int i = 0; i < $n; i ++) {
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
+            $leftStr = ${eval1.value}.$get(i);
             if ($leftStr.$function($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -135,8 +129,8 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
         $newSize = 0;
         for (int j = 0; j < $n; j ++) {
           int i = $sel[j];
-          $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-          $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+          $leftStr = ${eval1.value}.$get(i);
+          $rightStr = ${eval2.value}.$get(i);
           if ($leftStr.$function($rightStr)) {
             $sel[$newSize ++] = i;
           }
@@ -145,8 +139,8 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
       } else {
         $newSize = 0;
         for (int i = 0; i < $n; i ++) {
-          $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-          $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+          $leftStr = ${eval1.value}.$get(i);
+          $rightStr = ${eval2.value}.$get(i);
           if ($leftStr.$function($rightStr)) {
             $sel[$newSize ++] = i;
           }
@@ -207,18 +201,15 @@ case class BatchLike(
         val n = ctx.freshName("n")
         val newSize = ctx.freshName("newSize")
         val sel = ctx.freshName("sel")
-        val leftV = ctx.freshName("leftV")
         val str = ctx.freshName("str")
+        val get = ctx.getMethodName(StringType)
 
         s"""
           ${eval.code}
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-          UTF8String $str = new UTF8String();
-
-          ${ctx.vectorArrayType(left.dataType)} $leftV =
-            ${eval.value}.${ctx.vectorName(left.dataType)};
+          UTF8String $str;
 
           // filter rows with NULL on left input
           int $newSize;
@@ -230,7 +221,7 @@ case class BatchLike(
 
           // All rows with nulls has been filtered out, so just do normal filter for no-null case
           if ($n != 0 && ${eval.value}.isRepeating) {
-            $str.update($leftV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
+            $str = ${eval.value}.$get(0);
             if (!$pattern.matcher($str.toString()).matches()) {
               ${ctx.INPUT_ROWBATCH}.size = 0;
             }
@@ -238,7 +229,7 @@ case class BatchLike(
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $str.update($leftV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($pattern.matcher($str.toString()).matches()) {
                 $sel[$newSize ++] = i;
               }
@@ -247,7 +238,7 @@ case class BatchLike(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              $str.update($leftV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($pattern.matcher($str.toString()).matches()) {
                 $sel[$newSize ++] = i;
               }
@@ -292,7 +283,7 @@ case class BatchSubstring(
           ${eval.code}
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-          ColumnVector ${ev.value} = new ColumnVector(${eval.value});
+          OnColumnVector ${ev.value} = new OnColumnVector(${eval.value});
 
           if (${ev.value}.noNulls) {
             if (${ev.value}.isRepeating) {
@@ -337,7 +328,7 @@ case class BatchSubstring(
               if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
                 for (int j = 0; j < $n; j ++) {
                   int i = $sel[j];
-                  if (!${ev.value}.isNull[i]) {
+                  if (!${ev.value}.isNullAt(i)) {
                     if ($position > ${ev.value}.lengths[i]) {
                       ${ev.value}.isNull[i] = true;
                     } else {
@@ -349,7 +340,7 @@ case class BatchSubstring(
                 }
               } else {
                 for (int i = 0; i < $n; i ++) {
-                  if (!${ev.value}.isNull[i]) {
+                  if (!${ev.value}.isNullAt(i)) {
                     if ($position > ${ev.value}.lengths[i]) {
                       ${ev.value}.isNull[i] = true;
                     } else {

@@ -34,19 +34,15 @@ case class BatchCast(
     val batchSize = ctx.freshName("batchSize")
     val sel = ctx.freshName("sel")
     val selectedInUse = ctx.freshName("selectedInUse")
-    val fromV = ctx.freshName("fromV")
-    val resultV = ctx.freshName("resultV")
+    val get = ctx.getMethodName(child.dataType)
+    val put = ctx.putMethodName(dataType)
 
     def cvCopy(castSingle: String): String = {
       val cal = s"""
         ${ev.value} = ${ctx.newVector(s"${eval.value}.getCapacity()", dataType)};
         ${ev.value}.noNulls = ${eval.value}.noNulls;
-        System.arraycopy(${eval.value}.isNull, 0,
-          ${ev.value}.isNull, 0, ${eval.value}.getCapacity());
+        ColumnVector.copyNulls(${eval.value}, 0, ${ev.value}, 0, ${eval.value}.getCapacity());
         ${ev.value}.isRepeating = ${eval.value}.isRepeating;
-        ${ctx.vectorArrayType(dataType)} $resultV = ${ev.value}.${ctx.vectorName(dataType)};
-        ${ctx.vectorArrayType(child.dataType)} $fromV =
-          ${eval.value}.${ctx.vectorName(child.dataType)};
         if (${ev.value}.isRepeating && ${ev.value}.noNulls) {
           int i = 0;
           $castSingle
@@ -67,13 +63,13 @@ case class BatchCast(
           if ($selectedInUse) {
             for (int j = 0; j < $batchSize; j ++) {
               int i = $sel[j];
-              if (!${ev.value}.isNull[i]) {
+              if (!${ev.value}.isNullAt(i)) {
                 $castSingle
               }
             }
           } else {
             for (int i = 0; i < $batchSize; i ++) {
-              if (!${ev.value}.isNull[i]) {
+              if (!${ev.value}.isNullAt(i)) {
                 $castSingle
               }
             }
@@ -99,40 +95,40 @@ case class BatchCast(
       case StringType =>
         s"""
           try {
-            $resultV[i] = Integer.valueOf(${eval.value}.getString(i).toString());
+            ${ev.value}.$put(i, Integer.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
-            ${ev.value}.isNull[i] = true;
+            ${ev.value}.putNull(i);
           }
         """
-      case x: NumericType => s"$resultV[i] = (int) $fromV[i];"
+      case x: NumericType => s"${ev.value}.$put(i, (int) ${eval.value}.$get(i));"
     }
 
     val castToLongCode = child.dataType match {
       case StringType =>
         s"""
           try {
-            $resultV[i] = Long.valueOf(${eval.value}.getString(i).toString());
+            ${ev.value}.$put(i, Long.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
-            ${ev.value}.isNull[i] = true;
+            ${ev.value}.putNull(i);
           }
         """
-      case x: NumericType => s"$resultV[i] = (long) $fromV[i];"
+      case x: NumericType => s"${ev.value}.$put(i, (long) ${eval.value}.$get(i));"
     }
 
     val castToDoubleCode = child.dataType match {
       case StringType =>
         s"""
           try {
-            $resultV[i] = Double.valueOf(${eval.value}.getString(i).toString());
+            ${ev.value}.$put(i, Double.valueOf(${eval.value}.getString(i).toString());
           } catch (java.lang.NumberFormatException e) {
-            ${ev.value}.isNull[i] = true;
+            ${ev.value}.putNull(i);
           }
         """
-      case x: NumericType => s"$resultV[i] = (double) $fromV[i];"
+      case x: NumericType => s"${ev.value}.$put(i, (double) ${eval.value}.$get(i));"
     }
 
     val castToStringCode = child.dataType match {
-      case _ => s"${ev.value}.putString(i, String.valueOf($fromV[i]));"
+      case _ => s"${ev.value}.putString(i, String.valueOf(${eval.value}.$get(i)));"
     }
 
     val castCode = dataType match {

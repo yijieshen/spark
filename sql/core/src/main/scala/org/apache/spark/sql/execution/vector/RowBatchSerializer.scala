@@ -21,9 +21,9 @@ import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 
-import org.apache.spark.SparkConf
-
 import scala.reflect.ClassTag
+
+import org.apache.spark.memory.MemoryMode
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatchRead}
@@ -113,7 +113,7 @@ private class RowBatchSerializerInstance(
           override def hasNext: Boolean = nextBatchSize != EOF
 
           override def next(): (Int, RowBatch) = {
-            rowBatch.reset(false)
+            rowBatch.reset()
             while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
               readSize()
               rowBatch.appendFromStream(rbc, nextBatchSize)

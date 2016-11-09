@@ -22,7 +22,7 @@ import java.nio.channels.ReadableByteChannel
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{ColumnVectorSerDeHelper, RowBatch}
 import org.apache.spark.sql.types._
 
 abstract class BatchRead {
@@ -45,37 +45,20 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
     val ctx = newCodeGenContext()
     ctx.setBatchCapacity(defaultCapacity)
 
+    val bufferType = classOf[ColumnVectorSerDeHelper].getName
+
     val schema = in.map(_.dataType)
 
+    val allocateBuffers = schema.zipWithIndex.map { case (dt, idx) =>
+      s"""
+        buffers[$idx] = $bufferType.create${ctx.typeName(dt)}Buffer($defaultCapacity);
+      """
+    }.mkString("\n")
+
     val columnsRead = schema.zipWithIndex.map { case (dt, idx) =>
-      dt match {
-        case IntegerType =>
-          s"""
-            rb.columns[$idx].nulls = this.nulls;
-            rb.columns[$idx].values = this.values;
-            rb.columns[$idx].appendFromIntStream(in, startIdx, numRows);
-          """
-        case LongType =>
-          s"""
-            rb.columns[$idx].nulls = this.nulls;
-            rb.columns[$idx].values = this.values;
-            rb.columns[$idx].appendFromLongStream(in, startIdx, numRows);
-          """
-        case DoubleType =>
-          s"""
-            rb.columns[$idx].nulls = this.nulls;
-            rb.columns[$idx].values = this.values;
-            rb.columns[$idx].appendFromDoubleStream(in, startIdx, numRows);
-          """
-        case StringType =>
-          s"""
-            rb.columns[$idx].nulls = this.nulls;
-            rb.columns[$idx].values = this.values;
-            rb.columns[$idx].appendFromStringStream(in, startIdx, numRows);
-          """
-        case _ =>
-          "Not implemented yet"
-      }
+      s"""
+        buffers[$idx].populate${ctx.typeName(dt)}CV(rb.columns[$idx], in, startIdx, numRows);
+      """
     }.mkString("\n")
 
     val code =
@@ -86,18 +69,15 @@ object GenerateBatchRead extends CodeGenerator[Seq[Expression], BatchRead] {
 
       class SpecificBatchRead extends ${classOf[BatchRead].getName} {
         private $exprType[] expressions;
-        private java.nio.ByteBuffer nulls;
-        private java.nio.ByteBuffer values;
+        private $bufferType[] buffers;
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
         public SpecificBatchRead($exprType[] expressions) {
           this.expressions = expressions;
           ${initMutableStates(ctx)}
-          nulls = java.nio.ByteBuffer.allocate($defaultCapacity * 4);
-          nulls.order(java.nio.ByteOrder.nativeOrder());
-          values = java.nio.ByteBuffer.allocate($defaultCapacity * 16);
-          values.order(java.nio.ByteOrder.nativeOrder());
+          this.buffers = new $bufferType[${schema.size}];
+          $allocateBuffers
         }
 
         public void append(java.nio.channels.ReadableByteChannel in,

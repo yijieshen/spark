@@ -20,6 +20,7 @@ package org.apache.spark.sql.hive.orc;
 import org.apache.hadoop.hive.ql.io.orc.InStream;
 import org.apache.hadoop.hive.ql.io.orc.PositionProvider;
 import org.apache.spark.sql.catalyst.vector.ColumnVector;
+import org.apache.spark.sql.catalyst.vector.OnColumnVector;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -65,8 +66,10 @@ class BitFieldReader {
     return result & mask;
   }
 
-  void nextVector(ColumnVector previous, long previousLen)
+  void nextVector(ColumnVector cv, long previousLen)
       throws IOException {
+
+    OnColumnVector previous = (OnColumnVector) cv;
 
     previous.isRepeating = true;
     for (int i = 0; i < previousLen; i++) {

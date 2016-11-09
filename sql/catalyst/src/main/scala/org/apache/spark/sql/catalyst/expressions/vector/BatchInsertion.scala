@@ -47,13 +47,13 @@ object GenerateBatchInsertion extends CodeGenerator[Seq[Expression], BatchInsert
     val columnInsertions = schema.zipWithIndex.map { case (dt, idx) =>
       dt match {
         case IntegerType =>
-          s"to.columns[$idx].putIntCV(from.columns[$idx], from.sorted, start, length);"
+          s"to.buffers[$idx].serializeIntCV(from.columns[$idx], from.sorted, start, length);"
         case LongType =>
-          s"to.columns[$idx].putLongCV(from.columns[$idx], from.sorted, start, length);"
+          s"to.buffers[$idx].serializeLongCV(from.columns[$idx], from.sorted, start, length);"
         case DoubleType =>
-          s"to.columns[$idx].putDoubleCV(from.columns[$idx], from.sorted, start, length);"
+          s"to.buffers[$idx].serializeDoubleCV(from.columns[$idx], from.sorted, start, length);"
         case StringType =>
-          s"to.columns[$idx].putStringCV(from.columns[$idx], from.sorted, start, length);"
+          s"to.buffers[$idx].serializeStringCV(from.columns[$idx], from.sorted, start, length);"
         case _ =>
           "Not implemented yet"
       }

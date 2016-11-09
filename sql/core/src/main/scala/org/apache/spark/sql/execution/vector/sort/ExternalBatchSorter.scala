@@ -128,7 +128,7 @@ class ExternalBatchSorter(
     if (inMemoryBatchSorter != null) {
       inMemoryBatchSorter.freeMemory()
     }
-    taskMemoryManager.releaseExecutionMemory(memoryFreed, MemoryMode.ON_HEAP, this)
+    taskMemoryManager.releaseExecutionMemory(memoryFreed, MemoryMode.OFF_HEAP, this)
     memoryFreed
   }
 
@@ -206,9 +206,12 @@ class ExternalBatchSorter(
 
         val spillWriter: RowBatchSpillWriter =
           new RowBatchSpillWriter(blockManager, writeMetrics, schema, defaultCapacity)
-        while (upstream.hasNext()) {
-          upstream.loadNext()
-          spillWriter.write(upstream.currentBatch)
+
+        // clone the iterator to avoid changing the currentBatch in use by PriorityQueue
+        val writes: RowBatchSorterIterator = upstream.clone().asInstanceOf[RowBatchSorterIterator]
+        while (writes.hasNext()) {
+          writes.loadNext()
+          spillWriter.write(writes.currentBatch)
         }
         spillWriter.close()
 

@@ -63,10 +63,10 @@ private class DirectRowBatchSerializerInstance(
         dOut.writeInt(rb.numRows)
         dOut.writeInt(schema.size)
         rb.writeToStreamInRange(wbc)
-      } else {
+      } else { // columns are stored serialized in SerDeHelper
         dOut.writeInt(rb.size)
         dOut.writeInt(schema.size)
-        rb.writeToStream(wbc)
+        rb.writeBuffers(wbc)
       }
       this
     }
@@ -130,7 +130,7 @@ private class DirectRowBatchSerializerInstance(
                 rowBatch = RowBatch.create(schema.map(_.dataType).toArray, nextBatchSize)
                 rowBatch.reader = reader
               }
-              rowBatch.reset(false)
+              rowBatch.reset()
               while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
                 readSize() // read column num
                 rowBatch.appendFromStream(rbc, nextBatchSize)
@@ -184,7 +184,7 @@ private class DirectRowBatchSerializerInstance(
         private[this] val rbc: ReadableByteChannel = Channels.newChannel(dIn)
         private[this] val dts: Array[DataType] = schema.map(_.dataType).toArray
         private[this] val estimatedBatchSize: Long =
-          RowBatch.estimateMemoryFootprint(dts, defaultCapacity)
+          RowBatch.estimateMemoryFootprint(dts, defaultCapacity, MemoryMode.OFF_HEAP)
         private[this] val taskContext: TaskContext = TaskContext.get()
         private[this] val taskMemoryManager: TaskMemoryManager = taskContext.taskMemoryManager()
         private[this] val consumer: MemoryConsumer =
@@ -215,16 +215,16 @@ private class DirectRowBatchSerializerInstance(
                 consumer.minusAllocated(estimatedBatchSize)
               } else {
                 taskMemoryManager.acquireExecutionMemory(
-                  allocateGranularity, MemoryMode.ON_HEAP, consumer)
+                  allocateGranularity, MemoryMode.OFF_HEAP, consumer)
                 consumer.addUsed(allocateGranularity);
                 consumer.setAllocated(allocateGranularity - estimatedBatchSize)
               }
 
-              rowBatch = RowBatch.create(dts, defaultCapacity)
+              rowBatch = RowBatch.create(dts, defaultCapacity, MemoryMode.OFF_HEAP)
               numBatch += 1L
 
               rowBatch.reader = reader
-              rowBatch.reset(false)
+              rowBatch.reset()
 
               while (rowBatch.size + nextBatchSize <= rowBatch.capacity && nextBatchSize != EOF) {
                 readSize() // read column num

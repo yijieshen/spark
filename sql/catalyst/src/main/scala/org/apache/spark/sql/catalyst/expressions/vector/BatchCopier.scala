@@ -46,13 +46,13 @@ object GenerateBatchCopier extends CodeGenerator[Seq[Expression], BatchCopier] {
     val columnCopiers = schema.zipWithIndex.map { case (dt, idx) =>
       dt match {
         case IntegerType =>
-          s"to.columns[$idx].copyInt(from.columns[$idx], fromIdx, toIdx);"
+          s"to.columns[$idx].putInt(toIdx, from.columns[$idx].getInt(fromIdx));"
         case LongType =>
-          s"to.columns[$idx].copyLong(from.columns[$idx], fromIdx, toIdx);"
+          s"to.columns[$idx].putLong(toIdx, from.columns[$idx].getLong(fromIdx));"
         case DoubleType =>
-          s"to.columns[$idx].copyDouble(from.columns[$idx], fromIdx, toIdx);"
+          s"to.columns[$idx].putDouble(toIdx, from.columns[$idx].getDouble(fromIdx));"
         case StringType =>
-          s"to.columns[$idx].copyString(from.columns[$idx], fromIdx, toIdx);"
+          s"to.columns[$idx].putString(toIdx, from.columns[$idx].getString(fromIdx));"
         case _ =>
           "Not implemented yet"
       }

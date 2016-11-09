@@ -22,7 +22,7 @@ import java.nio.channels.WritableByteChannel
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{ColumnVectorSerDeHelper, RowBatch}
 import org.apache.spark.sql.types._
 
 abstract class BatchWrite {
@@ -46,21 +46,21 @@ object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
     val ctx = newCodeGenContext()
     ctx.setBatchCapacity(defaultCapacity)
 
+    val bufferType = classOf[ColumnVectorSerDeHelper].getName
+
     val schema = in.map(_.dataType)
 
+    val allocateBuffers = schema.zipWithIndex.map { case (dt, idx) =>
+      s"""
+        buffers[$idx] = $bufferType.create${ctx.typeName(dt)}Buffer($defaultCapacity);
+      """
+    }.mkString("\n")
+
     val columnsWrite = schema.zipWithIndex.map { case (dt, idx) =>
-      dt match {
-        case IntegerType =>
-          s"rb.columns[$idx].writeIntCVToStream(out, rb.sorted, rb.startIdx, rb.numRows);"
-        case LongType =>
-          s"rb.columns[$idx].writeLongCVToStream(out, rb.sorted, rb.startIdx, rb.numRows);"
-        case DoubleType =>
-          s"rb.columns[$idx].writeDoubleCVToStream(out, rb.sorted, rb.startIdx, rb.numRows);"
-        case StringType =>
-          s"rb.columns[$idx].writeStringCVToStream(out, rb.sorted, rb.startIdx, rb.numRows);"
-        case _ =>
-          "Not implemented yet"
-      }
+      s"""
+        buffers[$idx].
+          write${ctx.typeName(dt)}CV(rb.columns[$idx], rb.sorted, rb.startIdx, rb.numRows, out);
+      """
     }.mkString("\n")
 
     val code =
@@ -71,12 +71,15 @@ object GenerateBatchWrite extends CodeGenerator[Seq[Expression], BatchWrite] {
 
       class SpecificBatchWrite extends ${classOf[BatchWrite].getName} {
         private $exprType[] expressions;
+        private $bufferType[] buffers;
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
         public SpecificBatchWrite($exprType[] expressions) {
           this.expressions = expressions;
           ${initMutableStates(ctx)}
+          this.buffers = new $bufferType[${schema.size}];
+          $allocateBuffers
         }
 
         public void write(RowBatch rb,

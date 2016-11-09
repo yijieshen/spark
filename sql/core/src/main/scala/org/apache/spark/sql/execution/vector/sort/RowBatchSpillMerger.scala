@@ -63,7 +63,7 @@ case class RowBatchSpillMerger(
 
       @throws[IOException]
       override def loadNext(): Unit = {
-        rb.reset(false)
+        rb.reset()
         var rowIdx: Int = 0
 
         while (rowIdx < defaultCapacity && !priorityQueue.isEmpty) {

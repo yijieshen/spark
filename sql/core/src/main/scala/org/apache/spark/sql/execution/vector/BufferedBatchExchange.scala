@@ -132,7 +132,7 @@ case class BufferedBatchExchange(
         def populateRBs(): Unit = {
           while (iterator.hasNext && fullBatches.isEmpty) {
             val current = iterator.next()
-            val partitionKey = partitionKeyExtractor(current).columns(0).intVector
+            val partitionKey = partitionKeyExtractor(current).columns(0).getIntVector
             current.sort(partitionKey)
 
             var curPID: Int = -1    // currentPartitionId
@@ -268,7 +268,7 @@ case class BufferedBatchExchange(
               currentBatch = iterator.next()
             }
             if (currentBatch.size != 0) {
-              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).intVector
+              currentPartitionKeys = partitionKeyExtractor(currentBatch).columns(0).getIntVector
               currentBatch.sort(currentPartitionKeys)
 
               currentPID = -1
@@ -357,7 +357,7 @@ case class BufferedBatchExchange(
       }
     }
     def put(rb: RowBatch): Unit = {
-      rb.reset(false)
+      rb.reset()
       pool.enqueue(rb)
     }
   }

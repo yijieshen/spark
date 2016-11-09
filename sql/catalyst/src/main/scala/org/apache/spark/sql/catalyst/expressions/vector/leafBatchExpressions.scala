@@ -35,19 +35,11 @@ case class BatchBoundReference(underlyingExpr: BoundReference) extends LeafBatch
 }
 
 case class BatchLiteral(underlyingExpr: Literal) extends LeafBatchExpression {
-  override def eval(input: RowBatch): ColumnVector = {
-    val cv = new ColumnVector(input.capacity, dataType)
-    cv.isRepeating = true
-    if (!cv.noNulls) {
-      cv.putNull(0)
-    } else {
-      cv.put(0, underlyingExpr.value)
-    }
-    cv
-  }
+  override def eval(input: RowBatch): ColumnVector = throw new UnsupportedOperationException
 
   override protected def genCode(
       ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
+    val put = ctx.putMethodName(dataType)
     val v = dataType match {
       case StringType =>
         if (!underlyingExpr.nullable) {
@@ -75,20 +67,19 @@ case class BatchLiteral(underlyingExpr: Literal) extends LeafBatchExpression {
         }
         if (!underlyingExpr.nullable) {
           s"""
-            ${ev.value}.${ctx.vectorName(dataType)}[0] = $value;
+            ${ev.value}.$put(0, $value);
             ${ev.value}.isNull[0] = false;
           """
         } else {
           s"""
-            ${ev.value}.${ctx.vectorName(dataType)}[0] =
-              ColumnVector.${ctx.javaType(dataType)}NullValue;
+            ${ev.value}.${ev.value}.$put(0, ColumnVector.${ctx.javaType(dataType)}NullValue);
             ${ev.value}.isNull[0] = true;
           """
         }
     }
 
     s"""
-      ColumnVector ${ev.value} = ${ctx.newVector("1", dataType)};
+      OnColumnVector ${ev.value} = ${ctx.newVector("1", dataType)};
       ${ev.value}.isRepeating = true;
       ${ev.value}.noNulls = ${!underlyingExpr.nullable};
       $v

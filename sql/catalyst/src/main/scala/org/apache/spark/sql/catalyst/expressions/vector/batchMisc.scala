@@ -59,7 +59,8 @@ case class VectorsToRow(
     }.mkString("\n")
     s"""
       $vectorGen.reset(${ctx.INPUT_ROWBATCH});
-      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType, ctx)};
+      OnColumnVector ${ev.value} =
+        ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType, ctx)};
       $evals
       ${ev.value}.rowVector = $vectorGen.evaluate();
     """
@@ -92,23 +93,25 @@ case class BatchMurmur3Hash(
       val cur = child.gen(ctx)
       val dt = child.dataType
       val curV = ctx.freshName("curV")
+      val on = ctx.freshName("on")
       dt match {
         case StringType =>
           val bao = Platform.BYTE_ARRAY_OFFSET
           s"""
             ${cur.code}
-            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(StringType)};
+            OnColumnVector $on = (OnColumnVector) ${cur.value};
+            byte[][] $curV = $on.bytesVector;
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
                   $resultV[i] = $hasher.hashUnsafeBytes(
-                    $curV[0], ${cur.value}.starts[0] + $bao, ${cur.value}.lengths[0], $resultV[i]);
+                    $curV[0], $on.starts[0] + $bao, $on.lengths[0], $resultV[i]);
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
                   $resultV[i] = $hasher.hashUnsafeBytes(
-                    $curV[0], ${cur.value}.starts[0] + $bao, ${cur.value}.lengths[0], $resultV[i]);
+                    $curV[0], $on.starts[0] + $bao, $on.lengths[0], $resultV[i]);
                 }
               }
             } else if (${cur.value}.isRepeating) {
@@ -118,28 +121,28 @@ case class BatchMurmur3Hash(
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
                   $resultV[i] = $hasher.hashUnsafeBytes(
-                    $curV[i], ${cur.value}.starts[i] + $bao, ${cur.value}.lengths[i], $resultV[i]);
+                    $curV[i], $on.starts[i] + $bao, $on.lengths[i], $resultV[i]);
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
                   $resultV[i] = $hasher.hashUnsafeBytes(
-                    $curV[i], ${cur.value}.starts[i] + $bao, ${cur.value}.lengths[i], $resultV[i]);
+                    $curV[i], $on.starts[i] + $bao, $on.lengths[i], $resultV[i]);
                 }
               }
             } else {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashUnsafeBytes($curV[i],
-                      ${cur.value}.starts[i] + $bao, ${cur.value}.lengths[i], $resultV[i]);
+                      $on.starts[i] + $bao, $on.lengths[i], $resultV[i]);
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashUnsafeBytes($curV[i],
-                      ${cur.value}.starts[i] + $bao, ${cur.value}.lengths[i], $resultV[i]);
+                      $on.starts[i] + $bao, $on.lengths[i], $resultV[i]);
                   }
                 }
               }
@@ -148,7 +151,7 @@ case class BatchMurmur3Hash(
         case IntegerType =>
           s"""
             ${cur.code}
-            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(IntegerType)};
+            int[] $curV = ((OnColumnVector)${cur.value}).intVector;
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -177,13 +180,13 @@ case class BatchMurmur3Hash(
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashInt($curV[i], $resultV[i]);
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashInt($curV[i], $resultV[i]);
                   }
                 }
@@ -193,7 +196,7 @@ case class BatchMurmur3Hash(
         case LongType =>
           s"""
             ${cur.code}
-            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(LongType)};
+            long[] $curV = ((OnColumnVector)${cur.value}).longVector;
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -222,13 +225,13 @@ case class BatchMurmur3Hash(
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashLong($curV[i], $resultV[i]);
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashLong($curV[i], $resultV[i]);
                   }
                 }
@@ -238,7 +241,7 @@ case class BatchMurmur3Hash(
         case DoubleType =>
           s"""
             ${cur.code}
-            ${ctx.vectorArrayType(dt)} $curV = ${cur.value}.${ctx.vectorName(DoubleType)};
+            double[] $curV = ((OnColumnVector)${cur.value}).doubleVector;
             if (${cur.value}.noNulls && ${cur.value}.isRepeating) {
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
@@ -267,13 +270,13 @@ case class BatchMurmur3Hash(
               if ($selectedInUse) {
                 for (int j = 0; j < $batchSize; j ++) {
                   int i = $sel[j];
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashLong(Double.doubleToLongBits($curV[i]), $resultV[i]);
                   }
                 }
               } else {
                 for (int i = 0; i < $batchSize; i ++) {
-                  if (!${cur.value}.isNull[i]) {
+                  if (!${cur.value}.isNullAt(i)) {
                     $resultV[i] = $hasher.hashLong(Double.doubleToLongBits($curV[i]), $resultV[i]);
                   }
                 }
@@ -289,7 +292,7 @@ case class BatchMurmur3Hash(
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
 
-      ColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
+      OnColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
       int[] $resultV = ${ev.value}.intVector;
       java.util.Arrays.fill($resultV, $seed);
 

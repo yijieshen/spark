@@ -4,6 +4,7 @@ import org.apache.spark.sql.catalyst.expressions.UnsafeRow;
 import org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder;
 import org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter;
 import org.apache.spark.sql.catalyst.vector.ColumnVector;
+import org.apache.spark.sql.catalyst.vector.OnColumnVector;
 import org.apache.spark.sql.catalyst.vector.RowBatch;
 
 public class UnsafeRowVectorWriter {
@@ -51,7 +52,8 @@ public class UnsafeRowVectorWriter {
     }
   }
 
-  public void writeColumnInteger(int ordinal, ColumnVector intcv) {
+  public void writeColumnInteger(int ordinal, ColumnVector cv) {
+    OnColumnVector intcv = (OnColumnVector) cv;
     if (rowBatch.selectedInUse) {
       if (intcv.isRepeating && intcv.noNulls) {
         final int value = intcv.intVector[0];
@@ -72,7 +74,7 @@ public class UnsafeRowVectorWriter {
       } else { // !isRepeating && hasNull
         for (int j = 0; j < rowBatch.size; j ++) {
           int i = rowBatch.selected[j];
-          if (intcv.isNull[i]) {
+          if (intcv.isNullAt(i)) {
             writers[i].setNullAt(ordinal);
           } else {
             writers[i].write(ordinal, intcv.intVector[i]);
@@ -105,7 +107,8 @@ public class UnsafeRowVectorWriter {
     }
   }
 
-  public void writeColumnLong(int ordinal, ColumnVector longcv) {
+  public void writeColumnLong(int ordinal, ColumnVector cv) {
+    OnColumnVector longcv = (OnColumnVector) cv;
     if (rowBatch.selectedInUse) {
       if (longcv.isRepeating && longcv.noNulls) {
         final long value = longcv.longVector[0];
@@ -159,7 +162,8 @@ public class UnsafeRowVectorWriter {
     }
   }
 
-  public void writeColumnDouble(int ordinal, ColumnVector doublecv) {
+  public void writeColumnDouble(int ordinal, ColumnVector cv) {
+    OnColumnVector doublecv = (OnColumnVector) cv;
     if (rowBatch.selectedInUse) {
       if (doublecv.isRepeating && doublecv.noNulls) {
         final double value = doublecv.doubleVector[0];
@@ -213,7 +217,8 @@ public class UnsafeRowVectorWriter {
     }
   }
 
-  public void writeColumnUTF8String(int ordinal, ColumnVector stringcv) {
+  public void writeColumnUTF8String(int ordinal, ColumnVector cv) {
+    OnColumnVector stringcv = (OnColumnVector) cv;
     if (rowBatch.selectedInUse) {
       if (stringcv.isRepeating && stringcv.noNulls) {
         final byte[] value = stringcv.bytesVector[0];

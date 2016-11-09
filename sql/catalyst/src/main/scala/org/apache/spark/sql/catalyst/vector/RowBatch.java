@@ -24,6 +24,8 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.lang.NotImplementedException;
+
+import org.apache.spark.memory.MemoryMode;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.catalyst.expressions.vector.BatchRead;
@@ -41,6 +43,7 @@ public class RowBatch implements Serializable {
   public int[] selected; // array of selected rows
   public boolean selectedInUse; // if selected is valid
   public ColumnVector[] columns;
+  public ColumnVectorSerDeHelper[] buffers;
 
   public int[] sorted; // array of sorted row indices
   public boolean sortedInUse; // if sorted is valid
@@ -75,9 +78,9 @@ public class RowBatch implements Serializable {
     this.sortedInUse = false;
     this.fieldTypes = dataTypes;
     this.endOfFile = false;
-    this.columns = new ColumnVector[numCols];
+    this.buffers = new ColumnVectorSerDeHelper[numCols];
     for (int i = 0; i < numCols; i ++) {
-      columns[i] = new ColumnVector(capacity, dataTypes[i], true);
+      buffers[i] = new ColumnVectorSerDeHelper(dataTypes[i], capacity);
     }
   }
 
@@ -107,53 +110,58 @@ public class RowBatch implements Serializable {
   }
 
   public static RowBatch create(DataType[] dts, int capacity) {
+    return create(dts, capacity, MemoryMode.ON_HEAP);
+  }
+
+  public static RowBatch create(DataType[] dts, int capacity, MemoryMode mode) {
     RowBatch rb = new RowBatch(dts.length, capacity);
     rb.fieldTypes = dts;
-    for (int i = 0; i < dts.length; i ++) {
-      rb.columns[i] = new ColumnVector(capacity, dts[i]);
+    if (mode == MemoryMode.ON_HEAP) {
+      for (int i = 0; i < dts.length; i ++) {
+        rb.columns[i] = new OnColumnVector(dts[i], capacity);
+      }
+    } else {
+      for (int i = 0; i < dts.length; i ++) {
+        rb.columns[i] = new OffColumnVector(dts[i], capacity);
+      }
     }
     return rb;
   }
 
-//  public static RowBatch create(DataType[] dts) {
-//    return create(dts, DEFAULT_CAPACITY);
-//  }
-
-  public static RowBatch create(DataType[] dts, List<String> colNames, int capacity) {
-    RowBatch rb = create(dts, capacity);
+  public static RowBatch createWithName(DataType[] dts, int capacity, List<String> colNames) {
+    RowBatch rb = create(dts, capacity, MemoryMode.ON_HEAP);
     rb.colNames = colNames;
     return rb;
   }
 
   public void reset() {
-    reset(true);
-  }
-
-  public void reset(boolean sizeToCapacity) {
     selectedInUse = false;
     sortedInUse = false;
-    if (sizeToCapacity) {
-      size = capacity;
-    } else {
-      size = 0;
-    }
+    size = 0;
     endOfFile = false;
-    for (ColumnVector col : columns) {
-      col.reset();
+    if (columns != null) {
+      for (ColumnVector col : columns) {
+        col.reset();
+      }
+    }
+    if (buffers != null) {
+      for (ColumnVectorSerDeHelper buffer: buffers) {
+        buffer.reset();
+      }
     }
   }
 
-  public static long estimateMemoryFootprint(DataType[] dataTypes, int capacity) {
-    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
+  public static long estimateMemoryFootprint(DataType[] dataTypes, int capacity, MemoryMode mode) {
+    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 /*pad*/ + 9 * 4 + 4 /*pad*/;
     mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* selected*/ + 16 + capacity * 4 /* sorted*/;
     for (DataType dt: dataTypes) {
-      mem += ColumnVector.estimateMemoryFootprint(dt, capacity);
+      mem += ColumnVector.estimateMemoryFootprint(dt, capacity, mode);
     }
     return mem;
   }
 
   public long memoryFootprintInBytes() {
-    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 + 8 * 4;
+    long mem = 12 /* object header*/ + 6 * 4 + 3 * 1 + 1 /*pad*/ + 9 * 4 + 4 /*pad*/;
     mem += 16 + 4 * 10 /* cv array*/ + 16 + capacity * 4 /* selected*/ + 16 + capacity * 4 /* sorted*/;
     for (ColumnVector cv: columns) {
       mem += cv.memoryFootprintInBytes();
@@ -169,9 +177,9 @@ public class RowBatch implements Serializable {
     }
   }
 
-  public void writeToStream(WritableByteChannel out) throws IOException {
-    for (ColumnVector col : columns) {
-      col.writeToStream(out);
+  public void writeBuffers(WritableByteChannel out) throws IOException {
+    for (ColumnVectorSerDeHelper buffer : buffers) {
+      buffer.writeBuffers(out);
     }
   }
 
@@ -285,7 +293,7 @@ public class RowBatch implements Serializable {
 
     @Override
     public boolean isNullAt(int ordinal) {
-      return columns[ordinal].isNull[rowId];
+      return columns[ordinal].isNullAt(rowId);
     }
 
     @Override
@@ -305,12 +313,12 @@ public class RowBatch implements Serializable {
 
     @Override
     public int getInt(int ordinal) {
-      return columns[ordinal].intVector[rowId];
+      return columns[ordinal].getInt(rowId);
     }
 
     @Override
     public long getLong(int ordinal) {
-      return columns[ordinal].longVector[rowId];
+      return columns[ordinal].getLong(rowId);
     }
 
     @Override
@@ -320,7 +328,7 @@ public class RowBatch implements Serializable {
 
     @Override
     public double getDouble(int ordinal) {
-      return columns[ordinal].doubleVector[rowId];
+      return columns[ordinal].getDouble(rowId);
     }
 
     @Override
@@ -330,9 +338,7 @@ public class RowBatch implements Serializable {
 
     @Override
     public UTF8String getUTF8String(int ordinal) {
-      ColumnVector cv = columns[ordinal];
-      str.update(cv.bytesVector[rowId], cv.starts[rowId], cv.lengths[rowId]);
-      return str;
+      return columns[ordinal].getString(rowId);
     }
 
     @Override

@@ -61,7 +61,7 @@ case class InMemoryBatchSorter(
     totalSize += rb.size
 
     if (allocated <= 0) {
-      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.ON_HEAP, consumer)
+      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.OFF_HEAP, consumer)
       consumer.addUsed(allocateGranularity)
       allocated = allocateGranularity
     }
@@ -71,7 +71,7 @@ case class InMemoryBatchSorter(
       allocated -= arraySize
     } else {
       val short = arraySize - allocated
-      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.ON_HEAP, consumer)
+      taskMemoryManager.acquireExecutionMemory(allocateGranularity, MemoryMode.OFF_HEAP, consumer)
       consumer.addUsed(allocateGranularity)
       allocated = allocateGranularity - short
     }
@@ -164,7 +164,7 @@ case class InMemoryBatchSorter(
 
       @throws[IOException]
       override def loadNext(): Unit = {
-        rb.reset(false)
+        rb.reset()
         var rowIdx: Int = 0
 
         while (rowIdx < defaultCapacity && i < total) {
@@ -180,6 +180,36 @@ case class InMemoryBatchSorter(
       }
 
       override def currentBatch: RowBatch = rb
+
+      override def clone(): AnyRef = {
+        new RowBatchSorterIterator {
+
+          val newRB: RowBatch =
+            RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity, MemoryMode.ON_HEAP)
+          var j: Int = i
+
+          override def hasNext(): Boolean = j < total
+
+          @throws[IOException]
+          override def loadNext(): Unit = {
+            newRB.reset()
+            var rowIdx: Int = 0
+
+            while (rowIdx < defaultCapacity && j < total) {
+              val rbAndRow = all(j)
+              val batch = rbAndRow >>> 16
+              val line = rbAndRow & 65535
+
+              batchCopier.copy(sortedBatches(batch), line, newRB, rowIdx)
+
+              j += 1
+              rowIdx += 1
+            }
+          }
+
+          override def currentBatch: RowBatch = newRB
+        }
+      }
     }
   }
 }

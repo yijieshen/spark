@@ -52,7 +52,7 @@ object GenerateRowGetter extends CodeGenerator[Seq[Expression], RowGetter] {
     val getter = in.zipWithIndex.map { case (expr, idx) =>
       val nullSafe = nullSafeGetter(expr.dataType, idx)
       s"""
-        if (vectors[$idx].isNull[rowIdx]) {
+        if (vectors[$idx].isNullAt(rowIdx)) {
           row.setNullAt($idx);
         } else {
           $nullSafe;

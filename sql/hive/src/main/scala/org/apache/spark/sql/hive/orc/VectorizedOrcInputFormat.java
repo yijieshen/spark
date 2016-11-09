@@ -94,7 +94,7 @@ public class VectorizedOrcInputFormat extends FileInputFormat<Void, RowBatch> {
       for (int i = 0; i < colsToInclude.size(); i ++) {
         dts[i] = fileOrigin.apply(colsToInclude.get(i)).dataType();
       }
-      rowBatch = RowBatch.create(dts, colsToInclude, defaultBatchCapacity);
+      rowBatch = RowBatch.createWithName(dts, defaultBatchCapacity, colsToInclude);
       return rowBatch;
     }
 

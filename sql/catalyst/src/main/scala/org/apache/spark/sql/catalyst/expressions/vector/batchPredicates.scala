@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenContext, Genera
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types._
 
+// scalastyle:off
 abstract class BinaryBatchComparison extends BinaryBatchOperator {
 
   override def genCode(ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
@@ -32,8 +33,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
     val n = ctx.freshName("n")
     val newSize = ctx.freshName("newSize")
     val sel = ctx.freshName("sel")
-    val leftV = ctx.freshName("leftV")
-    val rightV = ctx.freshName("rightV")
+    val get = ctx.getMethodName(left.dataType)
 
     if (ctx.isPrimitiveType(left.dataType)
         && left.dataType != BooleanType
@@ -45,10 +45,6 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
         int $n = ${ctx.INPUT_ROWBATCH}.size;
         int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-        ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
-        ${ctx.javaType(right.dataType)}[] $rightV =
-          ${eval2.value}.${ctx.vectorName(right.dataType)};
-
         // filter rows with NULL on left input
         int $newSize;
         $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
@@ -65,7 +61,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
 
         // All rows with nulls has been filtered out, so just do normal filter for no-null case
         if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-          if (!($leftV[0] $symbol $rightV[0])) {
+          if (!(${eval1.value}.$get(0) $symbol ${eval2.value}.$get(0))) {
             ${ctx.INPUT_ROWBATCH}.size = 0;
           }
         } else if (${eval1.value}.isRepeating) {
@@ -73,7 +69,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if ($leftV[0] $symbol $rightV[i]) {
+              if (${eval1.value}.$get(0) $symbol ${eval2.value}.$get(i)) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -81,7 +77,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if ($leftV[0] $symbol $rightV[i]) {
+              if (${eval1.value}.$get(0) $symbol ${eval2.value}.$get(i)) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -95,7 +91,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if ($leftV[i] $symbol $rightV[0]) {
+              if (${eval1.value}.$get(i) $symbol ${eval2.value}.$get(0)) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -103,7 +99,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if ($leftV[i] $symbol $rightV[0]) {
+              if (${eval1.value}.$get(i) $symbol ${eval2.value}.$get(0)) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -116,7 +112,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
           $newSize = 0;
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            if ($leftV[i] $symbol $rightV[i]) {
+            if (${eval1.value}.$get(i) $symbol ${eval2.value}.$get(i)) {
               $sel[$newSize ++] = i;
             }
           }
@@ -124,104 +120,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
         } else {
           $newSize = 0;
           for (int i = 0; i < $n; i ++) {
-            if ($leftV[i] $symbol $rightV[i]) {
-              $sel[$newSize ++] = i;
-            }
-          }
-          if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
-            ${ctx.INPUT_ROWBATCH}.size = $newSize;
-            ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
-          }
-        }
-      """
-    } else if (!left.dataType.isInstanceOf[StringType]) {
-      s"""
-        ${eval1.code}
-        ${eval2.code}
-        int $n = ${ctx.INPUT_ROWBATCH}.size;
-        int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-
-        ${ctx.vectorArrayType(left.dataType)} $leftV =
-          ${eval1.value}.${ctx.vectorName(left.dataType)};
-        ${ctx.vectorArrayType(right.dataType)} $rightV =
-          ${eval2.value}.${ctx.vectorName(right.dataType)};
-
-        // filter rows with NULL on left input
-        int $newSize;
-        $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
-        if ($newSize < $n) {
-          $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
-          ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
-        }
-
-        $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
-        if ($newSize < $n) {
-          $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
-          ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
-        }
-
-        // All rows with nulls has been filtered out, so just do normal filter for no-null case
-        if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-          if (!(${ctx.genComp(left.dataType, s"$leftV[0]", s"$rightV[0]")} $symbol 0)) {
-            ${ctx.INPUT_ROWBATCH}.size = 0;
-          }
-        } else if (${eval1.value}.isRepeating) {
-          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
-            $newSize = 0;
-            for (int j = 0; j < $n; j ++) {
-              int i = $sel[j];
-              if (${ctx.genComp(left.dataType, s"$leftV[0]", s"$rightV[i]")} $symbol 0) {
-                $sel[$newSize ++] = i;
-              }
-            }
-            ${ctx.INPUT_ROWBATCH}.size = $newSize;
-          } else {
-            $newSize = 0;
-            for (int i = 0; i < $n; i ++) {
-              if (${ctx.genComp(left.dataType, s"$leftV[0]", s"$rightV[i]")} $symbol 0) {
-                $sel[$newSize ++] = i;
-              }
-            }
-            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
-              ${ctx.INPUT_ROWBATCH}.size = $newSize;
-              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
-            }
-          }
-        } else if (${eval2.value}.isRepeating) {
-          if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
-            $newSize = 0;
-            for (int j = 0; j < $n; j ++) {
-              int i = $sel[j];
-              if (${ctx.genComp(left.dataType, s"$leftV[i]", s"$rightV[0]")} $symbol 0) {
-                $sel[$newSize ++] = i;
-              }
-            }
-            ${ctx.INPUT_ROWBATCH}.size = $newSize;
-          } else {
-            $newSize = 0;
-            for (int i = 0; i < $n; i ++) {
-              if (${ctx.genComp(left.dataType, s"$leftV[i]", s"$rightV[0]")} $symbol 0) {
-                $sel[$newSize ++] = i;
-              }
-            }
-            if ($newSize < ${ctx.INPUT_ROWBATCH}.size) {
-              ${ctx.INPUT_ROWBATCH}.size = $newSize;
-              ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
-            }
-          }
-        } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
-          $newSize = 0;
-          for (int j = 0; j < $n; j ++) {
-            int i = $sel[j];
-            if (${ctx.genComp(left.dataType, s"$leftV[i]", s"$rightV[i]")} $symbol 0) {
-              $sel[$newSize ++] = i;
-            }
-          }
-          ${ctx.INPUT_ROWBATCH}.size = $newSize;
-        } else {
-          $newSize = 0;
-          for (int i = 0; i < $n; i ++) {
-            if (${ctx.genComp(left.dataType, s"$leftV[i]", s"$rightV[i]")} $symbol 0) {
+            if (${eval1.value}.$get(i) $symbol ${eval2.value}.$get(i)) {
               $sel[$newSize ++] = i;
             }
           }
@@ -232,21 +131,11 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
         }
       """
     } else {
-      val leftStr = ctx.freshName("leftStr")
-      val rightStr = ctx.freshName("rightStr")
       s"""
         ${eval1.code}
         ${eval2.code}
         int $n = ${ctx.INPUT_ROWBATCH}.size;
         int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
-
-        UTF8String $leftStr = new UTF8String();
-        UTF8String $rightStr = new UTF8String();
-
-        ${ctx.vectorArrayType(left.dataType)} $leftV =
-          ${eval1.value}.${ctx.vectorName(left.dataType)};
-        ${ctx.vectorArrayType(right.dataType)} $rightV =
-          ${eval2.value}.${ctx.vectorName(right.dataType)};
 
         // filter rows with NULL on left input
         int $newSize;
@@ -264,29 +153,23 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
 
         // All rows with nulls has been filtered out, so just do normal filter for no-null case
         if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-          $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
-          $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
-          if (!(${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0)) {
+          if (!(${ctx.genComp(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(0)")} $symbol 0)) {
             ${ctx.INPUT_ROWBATCH}.size = 0;
           }
         } else if (${eval1.value}.isRepeating) {
           if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
-            $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
-              if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+              if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(i)")} $symbol 0) {
                 $sel[$newSize ++] = i;
               }
             }
             ${ctx.INPUT_ROWBATCH}.size = $newSize;
           } else {
             $newSize = 0;
-            $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
             for (int i = 0; i < $n; i ++) {
-              $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
-              if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+              if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(i)")} $symbol 0) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -298,21 +181,17 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
         } else if (${eval2.value}.isRepeating) {
           if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
-            $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-              if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+              if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(0)")} $symbol 0) {
                 $sel[$newSize ++] = i;
               }
             }
             ${ctx.INPUT_ROWBATCH}.size = $newSize;
           } else {
             $newSize = 0;
-            $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
             for (int i = 0; i < $n; i ++) {
-              $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-              if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+              if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(0)")} $symbol 0) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -325,9 +204,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
           $newSize = 0;
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
-            if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+            if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(i)")} $symbol 0) {
               $sel[$newSize ++] = i;
             }
           }
@@ -335,9 +212,7 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
         } else {
           $newSize = 0;
           for (int i = 0; i < $n; i ++) {
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
-            if (${ctx.genComp(left.dataType, leftStr, rightStr)} $symbol 0) {
+            if (${ctx.genComp(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(i)")} $symbol 0) {
               $sel[$newSize ++] = i;
             }
           }
@@ -368,8 +243,8 @@ case class BatchEqualTo(
     val n = ctx.freshName("n")
     val newSize = ctx.freshName("newSize")
     val sel = ctx.freshName("sel")
-    val leftV = ctx.freshName("leftV")
-    val rightV = ctx.freshName("rightV")
+    val get = ctx.getMethodName(left.dataType)
+
     if (left.dataType.isInstanceOf[StringType]) {
       val leftStr = ctx.freshName("leftStr")
       val rightStr = ctx.freshName("rightStr")
@@ -380,13 +255,8 @@ case class BatchEqualTo(
         int $n = ${ctx.INPUT_ROWBATCH}.size;
         int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-        UTF8String $leftStr = new UTF8String();
-        UTF8String $rightStr = new UTF8String();
-
-        ${ctx.vectorArrayType(left.dataType)} $leftV =
-           ${eval1.value}.${ctx.vectorName(left.dataType)};
-        ${ctx.vectorArrayType(right.dataType)} $rightV =
-           ${eval2.value}.${ctx.vectorName(right.dataType)};
+        UTF8String $leftStr;
+        UTF8String $rightStr;
 
         // filter rows with NULL on left input
         int $newSize;
@@ -404,18 +274,18 @@ case class BatchEqualTo(
 
         // All rows with nulls has been filtered out, so just do normal filter for no-null case
         if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-          $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
-          $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+          $leftStr = ${eval1.value}.$get(0);
+          $rightStr = ${eval2.value}.$get(0);
           if (!$leftStr.equals($rightStr)) {
             ${ctx.INPUT_ROWBATCH}.size = 0;
           }
         } else if (${eval1.value}.isRepeating) {
           if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
-            $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
+            $leftStr = ${eval1.value}.$get(0);
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+              $rightStr = ${eval2.value}.$get(i);
               if ($leftStr.equals($rightStr)) {
                 $sel[$newSize ++] = i;
               }
@@ -423,9 +293,9 @@ case class BatchEqualTo(
             ${ctx.INPUT_ROWBATCH}.size = $newSize;
           } else {
             $newSize = 0;
-            $leftStr.update($leftV[0], ${eval1.value}.starts[0], ${eval1.value}.lengths[0]);
+            $leftStr = ${eval1.value}.$get(0);
             for (int i = 0; i < $n; i ++) {
-              $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+              $rightStr = ${eval2.value}.$get(i);
               if ($leftStr.equals($rightStr)) {
                 $sel[$newSize ++] = i;
               }
@@ -438,10 +308,10 @@ case class BatchEqualTo(
         } else if (${eval2.value}.isRepeating) {
           if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
-            $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+            $rightStr = ${eval2.value}.$get(0);
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
+              $leftStr = ${eval1.value}.$get(i);
               if ($leftStr.equals($rightStr)) {
                 $sel[$newSize ++] = i;
               }
@@ -449,9 +319,9 @@ case class BatchEqualTo(
             ${ctx.INPUT_ROWBATCH}.size = $newSize;
           } else {
             $newSize = 0;
-            $rightStr.update($rightV[0], ${eval2.value}.starts[0], ${eval2.value}.lengths[0]);
+            $rightStr = ${eval2.value}.$get(0);
             for (int i = 0; i < $n; i ++) {
-              $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
+              $leftStr = ${eval1.value}.$get(i);
               if ($leftStr.equals($rightStr)) {
                 $sel[$newSize ++] = i;
               }
@@ -465,8 +335,8 @@ case class BatchEqualTo(
           $newSize = 0;
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+            $leftStr = ${eval1.value}.$get(i);
+            $rightStr = ${eval2.value}.$get(i);
             if ($leftStr.equals($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -475,8 +345,8 @@ case class BatchEqualTo(
         } else {
           $newSize = 0;
           for (int i = 0; i < $n; i ++) {
-            $leftStr.update($leftV[i], ${eval1.value}.starts[i], ${eval1.value}.lengths[i]);
-            $rightStr.update($rightV[i], ${eval2.value}.starts[i], ${eval2.value}.lengths[i]);
+            $leftStr = ${eval1.value}.$get(i);
+            $rightStr = ${eval2.value}.$get(i);
             if ($leftStr.equals($rightStr)) {
               $sel[$newSize ++] = i;
             }
@@ -494,10 +364,6 @@ case class BatchEqualTo(
         int $n = ${ctx.INPUT_ROWBATCH}.size;
         int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-        ${ctx.javaType(left.dataType)}[] $leftV = ${eval1.value}.${ctx.vectorName(left.dataType)};
-        ${ctx.javaType(right.dataType)}[] $rightV =
-         ${eval2.value}.${ctx.vectorName(right.dataType)};
-
         // filter rows with NULL on left input
         int $newSize;
         $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
@@ -514,7 +380,7 @@ case class BatchEqualTo(
 
         // All rows with nulls has been filtered out, so just do normal filter for no-null case
         if ($n != 0 && ${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {
-          if (!(${ctx.genEqual(left.dataType, s"$leftV[0]", s"$rightV[0]")})) {
+          if (!(${ctx.genEqual(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(0)")})) {
             ${ctx.INPUT_ROWBATCH}.size = 0;
           }
         } else if (${eval1.value}.isRepeating) {
@@ -522,7 +388,7 @@ case class BatchEqualTo(
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if (${ctx.genEqual(left.dataType, s"$leftV[0]", s"$rightV[i]")}) {
+              if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(i)")}) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -530,7 +396,7 @@ case class BatchEqualTo(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if (${ctx.genEqual(left.dataType, s"$leftV[0]", s"$rightV[i]")}) {
+              if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(0)", s"${eval2.value}.$get(i)")}) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -544,7 +410,7 @@ case class BatchEqualTo(
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if (${ctx.genEqual(left.dataType, s"$leftV[i]", s"$rightV[0]")}) {
+              if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(0)")}) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -552,7 +418,7 @@ case class BatchEqualTo(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if (${ctx.genEqual(left.dataType, s"$leftV[i]", s"$rightV[0]")}) {
+              if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(0)")}) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -565,7 +431,7 @@ case class BatchEqualTo(
           $newSize = 0;
           for (int j = 0; j < $n; j ++) {
             int i = $sel[j];
-            if (${ctx.genEqual(left.dataType, s"$leftV[i]", s"$rightV[i]")}) {
+            if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(i)")}) {
               $sel[$newSize ++] = i;
             }
           }
@@ -573,7 +439,7 @@ case class BatchEqualTo(
         } else {
           $newSize = 0;
           for (int i = 0; i < $n; i ++) {
-            if (${ctx.genEqual(left.dataType, s"$leftV[i]", s"$rightV[i]")}) {
+            if (${ctx.genEqual(left.dataType, s"${eval1.value}.$get(i)", s"${eval2.value}.$get(i)")}) {
               $sel[$newSize ++] = i;
             }
           }
@@ -654,8 +520,8 @@ case class BatchIn(
 
     val n = ctx.freshName("n")
     val sel = ctx.freshName("sel")
-    val childV = ctx.freshName("childV")
     val newSize = ctx.freshName("newSize")
+    val get = ctx.getMethodName(cType)
 
     val str = ctx.freshName("str")
     ctx.addMutableState(seqName, seqTerm,
@@ -669,10 +535,7 @@ case class BatchIn(
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-          UTF8String $str = new UTF8String();
-
-          ${ctx.vectorArrayType(child.dataType)} $childV =
-            ${eval.value}.${ctx.vectorName(child.dataType)};
+          UTF8String $str;
 
           int $newSize;
           $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
@@ -682,7 +545,7 @@ case class BatchIn(
           }
 
           if ($n != 0 && ${eval.value}.isRepeating) {
-            $str.update($childV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
+            $str = ${eval.value}.$get(0);
             if (!$seqTerm.contains($str)) {
               ${ctx.INPUT_ROWBATCH}.size = 0;
             }
@@ -690,7 +553,7 @@ case class BatchIn(
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($seqTerm.contains($str)) {
                 $sel[$newSize ++] = i;
               }
@@ -699,7 +562,7 @@ case class BatchIn(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($seqTerm.contains($str)) {
                 $sel[$newSize ++] = i;
               }
@@ -716,9 +579,6 @@ case class BatchIn(
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-          ${ctx.vectorArrayType(child.dataType)} $childV =
-            ${eval.value}.${ctx.vectorName(child.dataType)};
-
           int $newSize;
           $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
@@ -727,14 +587,14 @@ case class BatchIn(
           }
 
           if ($n != 0 && ${eval.value}.isRepeating) {
-            if (!$seqTerm.contains($childV[0])) {
+            if (!$seqTerm.contains(${eval.value}.$get(0))) {
               ${ctx.INPUT_ROWBATCH}.size = 0;
             }
           } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if ($seqTerm.contains($childV[i])) {
+              if ($seqTerm.contains(${eval.value}.$get(i))) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -742,7 +602,7 @@ case class BatchIn(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if ($seqTerm.contains($childV[i])) {
+              if ($seqTerm.contains(${eval.value}.$get(i))) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -773,8 +633,8 @@ case class BatchInSet(
 
     val n = ctx.freshName("n")
     val sel = ctx.freshName("sel")
-    val childV = ctx.freshName("childV")
     val newSize = ctx.freshName("newSize")
+    val get = ctx.getMethodName(child.dataType)
 
     val str = ctx.freshName("str")
 
@@ -790,10 +650,7 @@ case class BatchInSet(
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-          UTF8String $str = new UTF8String();
-
-          ${ctx.vectorArrayType(child.dataType)} $childV =
-            ${eval.value}.${ctx.vectorName(child.dataType)};
+          UTF8String $str;
 
           int $newSize;
           $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
@@ -803,7 +660,7 @@ case class BatchInSet(
           }
 
           if ($n != 0 && ${eval.value}.isRepeating) {
-            $str.update($childV[0], ${eval.value}.starts[0], ${eval.value}.lengths[0]);
+            $str = ${eval.value}.$get(0);
             if (!$hsetTerm.contains($str)) {
               ${ctx.INPUT_ROWBATCH}.size = 0;
             }
@@ -811,7 +668,7 @@ case class BatchInSet(
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($hsetTerm.contains($str)) {
                 $sel[$newSize ++] = i;
               }
@@ -820,7 +677,7 @@ case class BatchInSet(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              $str.update($childV[i], ${eval.value}.starts[i], ${eval.value}.lengths[i]);
+              $str = ${eval.value}.$get(i);
               if ($hsetTerm.contains($str)) {
                 $sel[$newSize ++] = i;
               }
@@ -837,9 +694,6 @@ case class BatchInSet(
           int $n = ${ctx.INPUT_ROWBATCH}.size;
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-          ${ctx.vectorArrayType(child.dataType)} $childV =
-            ${eval.value}.${ctx.vectorName(child.dataType)};
-
           int $newSize;
           $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
@@ -848,14 +702,14 @@ case class BatchInSet(
           }
 
           if ($n != 0 && ${eval.value}.isRepeating) {
-            if (!$hsetTerm.contains($childV[0])) {
+            if (!$hsetTerm.contains(${eval.value}.$get(0))) {
               ${ctx.INPUT_ROWBATCH}.size = 0;
             }
           } else if (${ctx.INPUT_ROWBATCH}.selectedInUse) {
             $newSize = 0;
             for (int j = 0; j < $n; j ++) {
               int i = $sel[j];
-              if ($hsetTerm.contains($childV[i])) {
+              if ($hsetTerm.contains(${eval.value}.$get(i))) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -863,7 +717,7 @@ case class BatchInSet(
           } else {
             $newSize = 0;
             for (int i = 0; i < $n; i ++) {
-              if ($hsetTerm.contains($childV[i])) {
+              if ($hsetTerm.contains(${eval.value}.$get(i))) {
                 $sel[$newSize ++] = i;
               }
             }
@@ -1023,3 +877,4 @@ case class BatchNot(
     """
   }
 }
+// scalastyle:on

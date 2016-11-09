@@ -57,33 +57,32 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
       val dt = order.child.dataType
       val pa = ctx.freshName("primitiveA")
       val pb = ctx.freshName("primitiveB")
-      val childV = ctx.freshName("childV")
+      val get = ctx.getMethodName(dt)
       dt match {
         case StringType =>
           s"""
             ${eval.code}
-            ${ctx.vectorArrayType(dt)} $childV = ${eval.value}.${ctx.vectorName(dt)};
-            UTF8String $pa = new UTF8String();
-            UTF8String $pb = new UTF8String();
+            UTF8String $pa;
+            UTF8String $pb;
             if (${eval.value}.isRepeating) {
               // Nothing
             } else if (${eval.value}.noNulls) {
-              $pa.update($childV[a], ${eval.value}.starts[a], ${eval.value}.lengths[a]);
-              $pb.update($childV[b], ${eval.value}.starts[b], ${eval.value}.lengths[b]);
+              $pa = ${eval.value}.getString(a);
+              $pb = ${eval.value}.getAnotherString(b);
               comp = ${ctx.genComp(dt, pa, pb)};
               if (comp != 0) {
                 return ${if (asc) "comp" else "-comp"};
               }
             } else {
-              if (${eval.value}.isNull[a] && ${eval.value}.isNull[b]) {
+              if (${eval.value}.isNullAt(a) && ${eval.value}.isNullAt(b)) {
                 // Nothing
-              } else if (${eval.value}.isNull[a]) {
+              } else if (${eval.value}.isNullAt(a)) {
                 return ${if (asc) "-1" else "1"};
-              } else if (${eval.value}.isNull[b]) {
+              } else if (${eval.value}.isNullAt(b)) {
                 return ${if (asc) "1" else "-1"};
               } else {
-                $pa.update($childV[a], ${eval.value}.starts[a], ${eval.value}.lengths[a]);
-                $pb.update($childV[b], ${eval.value}.starts[b], ${eval.value}.lengths[b]);
+                $pa = ${eval.value}.getString(a);
+                $pb = ${eval.value}.getAnotherString(b);
                 comp = ${ctx.genComp(dt, pa, pb)};
                 if (comp != 0) {
                   return ${if (asc) "comp" else "-comp"};
@@ -94,28 +93,27 @@ object GenerateBatchOrdering extends CodeGenerator[Seq[SortOrder], BatchOrdering
         case _ =>
           s"""
             ${eval.code}
-            ${ctx.vectorArrayType(dt)} $childV = ${eval.value}.${ctx.vectorName(dt)};
             ${ctx.javaType(dt)} $pa;
             ${ctx.javaType(dt)} $pb;
             if (${eval.value}.isRepeating) {
               // Nothing
             } else if (${eval.value}.noNulls) {
-              $pa = $childV[a];
-              $pb = $childV[b];
+              $pa = ${eval.value}.$get(a);
+              $pb = ${eval.value}.$get(b);
               comp = ${ctx.genComp(dt, pa, pb)};
               if (comp != 0) {
                 return ${if (asc) "comp" else "-comp"};
               }
             } else {
-              if (${eval.value}.isNull[a] && ${eval.value}.isNull[b]) {
+              if (${eval.value}.isNullAt(a) && ${eval.value}.isNullAt(b)) {
                 // Nothing
-              } else if (${eval.value}.isNull[a]) {
+              } else if (${eval.value}.isNullAt(a)) {
                 return ${if (asc) "-1" else "1"};
-              } else if (${eval.value}.isNull[b]) {
+              } else if (${eval.value}.isNullAt(b)) {
                 return ${if (asc) "1" else "-1"};
               } else {
-                $pa = $childV[a];
-                $pb = $childV[b];
+                $pa = ${eval.value}.$get(a);
+                $pb = ${eval.value}.$get(b);
                 comp = ${ctx.genComp(dt, pa, pb)};
                 if (comp != 0) {
                   return ${if (asc) "comp" else "-comp"};

@@ -232,50 +232,35 @@ class CodeGenContext {
     case _ => "Object"
   }
 
-  def vectorName(dt: DataType): String = dt match {
-    case IntegerType => "intVector"
-    case LongType => "longVector"
-    case DoubleType => "doubleVector"
-    case StringType => "bytesVector"
-    case _: StructType => "rowVector"
+  def typeName(dt: DataType): String = dt match {
+    case IntegerType => "Int"
+    case LongType => "Long"
+    case DoubleType => "Double"
+    case StringType => "String"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
-  def vectorArrayType(dt: DataType): String = dt match {
-    case IntegerType => "int[]"
-    case LongType => "long[]"
-    case DoubleType => "double[]"
-    case StringType => "byte[][]"
-    case _: StructType => "UnsafeRow[]"
-    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
-  }
+  def getMethodName(dt: DataType): String = s"get${typeName(dt)}"
+
+  def putMethodName(dt: DataType): String = s"put${typeName(dt)}"
 
   def newVector(capacity: String, dt: DataType, ctx: CodeGenContext = null): String = dt match {
-    case IntegerType => s"ColumnVector.genIntegerColumnVector($capacity)"
-    case LongType => s"ColumnVector.genLongColumnVector($capacity)"
-    case DoubleType => s"ColumnVector.genDoubleColumnVector($capacity)"
-    case StringType => s"ColumnVector.genStringColumnVector($capacity)"
-    case _: StructType => s"ColumnVector.genUnsafeRowColumnVector(" +
+    case IntegerType => s"OnColumnVector.genIntCV($capacity)"
+    case LongType => s"OnColumnVector.genLongCV($capacity)"
+    case DoubleType => s"OnColumnVector.genDoubleCV($capacity)"
+    case StringType => s"OnColumnVector.genStringCV($capacity)"
+    case _: StructType => s"OnColumnVector.genUnsafeRowColumnVector(" +
       s"$capacity, expressions[${ctx.references.size - 1}].dataType())"
     case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
   }
 
-  def getCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String): String = dt match {
-    case IntegerType => s"$rb.columns[$colIdx].intVector[$rowIdx]"
-    case LongType => s"$rb.columns[$colIdx].longVector[$rowIdx]"
-    case DoubleType => s"$rb.columns[$colIdx].doubleVector[$rowIdx]"
-    case StringType => s"$rb.columns[$colIdx].getString($rowIdx)"
-    case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
+  def getCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String): String = {
+    s"$rb.columns[$colIdx].get${typeName(dt)}($rowIdx)"
   }
 
-  def putCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String, value: String): String =
-    dt match {
-      case IntegerType => s"$rb.columns[$colIdx].intVector[$rowIdx] = $value"
-      case LongType => s"$rb.columns[$colIdx].longVector[$rowIdx] = $value"
-      case DoubleType => s"$rb.columns[$colIdx].doubleVector[$rowIdx] = $value"
-      case StringType => s"$rb.columns[$colIdx].putString($rowIdx, $value)"
-      case _ => throw new UnsupportedOperationException(s"$dt not supported yet")
-    }
+  def putCell(dt: DataType, rb: String, colIdx: Int, rowIdx: String, value: String): String = {
+    s"$rb.columns[$colIdx].put${typeName(dt)}($rowIdx, $value)"
+  }
 
   /**
    * Returns the boxed type in Java.
@@ -690,7 +675,9 @@ object CodeGenerator extends Logging {
       classOf[UnsafeMapData].getName,
       classOf[MutableRow].getName,
       classOf[RowBatch].getName,
-      classOf[ColumnVector].getName
+      classOf[ColumnVector].getName,
+      classOf[OnColumnVector].getName,
+      classOf[OffColumnVector].getName
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
 

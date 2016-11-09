@@ -154,7 +154,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
-      SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
+      // SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
       SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
       import sqlContext.implicits._
 
@@ -395,7 +395,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Query 13") {
     withSQLConf(
-      SQLConf.VECTORIZE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_ENABLED.key -> "false",
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
@@ -412,7 +412,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
           .sort('custdist.desc, 'c_count.desc)
 
       result.explain(true)
-      result.show(false)
+      result.show(5000, false)
     }
   }
 
@@ -685,13 +685,13 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
-      SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
+      // SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
       SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
       import sqlContext.implicits._
 
       val result =
         lineitem.join(orders, 'l_orderkey === 'o_orderkey)
-          .agg(count(lit(1)))
+          .agg(count(lit('l_shipdate)))
 
       result.explain(true)
       result.show(false)
@@ -704,7 +704,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
-      SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
+      // SQLConf.VECTORIZE_BATCH_SORT_ENABLED.key -> "true",
       SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true") {
       import sqlContext.implicits._
 
@@ -718,7 +718,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
           // .join(customer, 'o_custkey === 'c_custkey && 's_nationkey === 'c_nationkey)
           .select('n_name, ('l_extendedprice * (lit(1) - 'l_discount)).as("value"))
           .groupBy('n_name)
-          .agg(sum('value).as("revenue"))
+          .agg(count('value).as("revenue"))
           .sort('revenue.desc)
 
       result.explain(true)
