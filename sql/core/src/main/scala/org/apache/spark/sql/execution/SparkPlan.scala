@@ -165,6 +165,14 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
 
   protected def doBatchExecute(): RDD[RowBatch] = new EmptyRDD[RowBatch](sparkContext)
 
+  private var parent: SparkPlan = null
+
+  def setParent(p: SparkPlan): Unit = {
+    this.parent = p
+  }
+
+  def getParent(): SparkPlan = parent
+
   /**
    * Prepare a SparkPlan for execution. It's idempotent.
    */

@@ -24,16 +24,24 @@ import org.apache.spark.memory.{MemoryConsumer, MemoryMode}
 import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.vector.{GenerateBatchCopier, InterBatchOrdering}
-import org.apache.spark.sql.catalyst.vector.{IntArrayTimSort, IntComparator, RowBatch}
+import org.apache.spark.sql.catalyst.vector.{IntArrayTimSort, IntComparator, OffHeapIntArrayTimSort, RowBatch}
+import org.apache.spark.unsafe.Platform
+
+object InMemoryBatchSorter {
+  val MASK_INT_LOWER_16_BITS: Int = 0xFFFF;
+  val MASK_INT_UPPER_16_BITS: Int = ~MASK_INT_LOWER_16_BITS;
+}
 
 case class InMemoryBatchSorter(
     consumer: MemoryConsumer,
     interBatchOrdering: InterBatchOrdering,
     schema: Seq[Attribute],
     defaultCapacity: Int) {
+  import InMemoryBatchSorter._
 
   val sortedBatches: mutable.ArrayBuffer[RowBatch] = mutable.ArrayBuffer.empty[RowBatch]
-  var all: Array[Int] = null
+  // var all: Array[Int] = null
+  var all: Long = 0
   var starts: Array[Int] = null
   var lengths: Array[Int] = null
   var batchCount: Int = 0
@@ -47,10 +55,10 @@ case class InMemoryBatchSorter(
 
   val comparator: IntComparator = new IntComparator {
     override def compare(i1: Int, i2: Int): Int = {
-      val b1: Int = i1 >>> 16
-      val l1: Int = i1 & 65535
-      val b2: Int = i2 >>> 16
-      val l2: Int = i2 & 65535
+      val b1: Int = (i1 & MASK_INT_UPPER_16_BITS) >>> 16
+      val l1: Int = i1 & MASK_INT_LOWER_16_BITS
+      val b2: Int = (i2 & MASK_INT_UPPER_16_BITS) >>> 16
+      val l2: Int = i2 & MASK_INT_LOWER_16_BITS
       interBatchOrdering.compare(sortedBatches(b1), l1, sortedBatches(b2), l2)
     }
   }
@@ -106,7 +114,9 @@ case class InMemoryBatchSorter(
     totalSize = 0
     firstTime = true
     allocated = 0
-    all = null
+    Platform.freeMemory(all)
+    all = 0
+    // all = null
     starts = null
     lengths = null
 
@@ -120,7 +130,7 @@ case class InMemoryBatchSorter(
   }
 
   def preSort(): Unit = {
-    all = new Array[Int](totalSize)
+    all = Platform.allocateMemory(totalSize * 4)// new Array[Int](totalSize)
     starts = new Array[Int](batchCount)
     lengths = new Array[Int](batchCount)
 
@@ -134,7 +144,9 @@ case class InMemoryBatchSorter(
       val higherBits = rbIdx << 16
       var rowIdx = 0
       while (rowIdx < rb.size) {
-        all(pos) = higherBits | (rb.sorted(rowIdx) & 65535)
+        Platform.putInt(
+          null, all + pos * 4, higherBits | (rb.sorted(rowIdx) & MASK_INT_LOWER_16_BITS))
+        // all(pos) = higherBits | (rb.sorted(rowIdx) & 65535)
 
         pos += 1
         rowIdx += 1
@@ -146,7 +158,8 @@ case class InMemoryBatchSorter(
 
   def sort(): Unit = {
     preSort()
-    IntArrayTimSort.msort(all, 0, all.length, comparator, starts, lengths)
+    OffHeapIntArrayTimSort.msort(all, totalSize, 0, totalSize, comparator, starts, lengths)
+    // IntArrayTimSort.msort(all, 0, all.length, comparator, starts, lengths)
   }
 
   val batchCopier = GenerateBatchCopier.generate(schema, defaultCapacity)
@@ -158,7 +171,7 @@ case class InMemoryBatchSorter(
 
       val rb: RowBatch = RowBatch.create(schema.map(_.dataType).toArray, defaultCapacity)
       var i: Int = 0
-      val total: Int = all.length
+      val total: Int = totalSize // all.length
 
       override def hasNext(): Boolean = i < total
 
@@ -168,9 +181,9 @@ case class InMemoryBatchSorter(
         var rowIdx: Int = 0
 
         while (rowIdx < defaultCapacity && i < total) {
-          val rbAndRow = all(i)
-          val batch = rbAndRow >>> 16
-          val line = rbAndRow & 65535
+          val rbAndRow = Platform.getInt(null, all + i * 4) // all(i)
+          val batch = (rbAndRow & MASK_INT_UPPER_16_BITS) >>> 16
+          val line = rbAndRow & MASK_INT_LOWER_16_BITS
 
           batchCopier.copy(sortedBatches(batch), line, rb, rowIdx)
 
@@ -196,9 +209,9 @@ case class InMemoryBatchSorter(
             var rowIdx: Int = 0
 
             while (rowIdx < defaultCapacity && j < total) {
-              val rbAndRow = all(j)
-              val batch = rbAndRow >>> 16
-              val line = rbAndRow & 65535
+              val rbAndRow = Platform.getInt(null, all + j * 4) // all(j)
+              val batch = (rbAndRow & MASK_INT_UPPER_16_BITS) >>> 16
+              val line = rbAndRow & MASK_INT_LOWER_16_BITS
 
               batchCopier.copy(sortedBatches(batch), line, newRB, rowIdx)
 

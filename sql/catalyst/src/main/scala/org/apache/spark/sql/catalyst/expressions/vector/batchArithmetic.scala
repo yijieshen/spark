@@ -35,13 +35,21 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
     val sel = ctx.freshName("sel")
     val get = ctx.getMethodName(dataType)
     val put = ctx.putMethodName(dataType)
+
+    val vectorGen: String = if (generateOffHeapColumnVector) {
+      s"OffColumnVector ${ev.value} = " +
+        s"new OffColumnVector(${eval1.value}.dataType, ${ctx.INPUT_ROWBATCH}.capacity);"
+    } else {
+      s"OnColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};"
+    }
+
     s"""
       ${eval1.code}
       ${eval2.code}
       int $batchSize = ${ctx.INPUT_ROWBATCH}.size;
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
-      OnColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};
+      $vectorGen
 
       ${ev.value}.isRepeating =
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||

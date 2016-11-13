@@ -32,80 +32,92 @@ object NullUtils {
       n: Int,
       selectedInUse: Boolean): Unit = {
 
-    val left = leftCV.asInstanceOf[OnColumnVector]
-    val right = rightCV.asInstanceOf[OnColumnVector]
-    val result = resultCV.asInstanceOf[OnColumnVector]
-
-    result.noNulls = leftCV.noNulls && right.noNulls
-    if (left.noNulls && !right.noNulls) {
-      if (right.isRepeating) {
-        result.isNull(0) = right.isNull(0)
+    resultCV.noNulls = leftCV.noNulls && rightCV.noNulls
+    if (leftCV.noNulls && !rightCV.noNulls) {
+      if (rightCV.isRepeating) {
+        resultCV.setNull(0, rightCV.isNullAt(0))
       } else {
         if (selectedInUse) {
           var j = 0
           while (j < n) {
             val i = selected(j)
-            result.isNull(i) = right.isNull(i)
+            resultCV.setNull(i, rightCV.isNullAt(i))
             j += 1
           }
         } else {
-          System.arraycopy(right.isNull, 0, result.isNull, 0, n)
+          var i = 0
+          while (i < n) {
+            resultCV.setNull(i, rightCV.isNullAt(i))
+            i += 1
+          }
         }
       }
-    } else if (!left.noNulls && right.noNulls) {
-      if (left.isRepeating) {
-        result.isNull(0) = left.isNull(0)
+    } else if (!leftCV.noNulls && rightCV.noNulls) {
+      if (leftCV.isRepeating) {
+        resultCV.setNull(0, leftCV.isNullAt(0))
       } else {
         if (selectedInUse) {
           var j = 0
           while (j < n) {
             val i = selected(j)
-            result.isNull(i) = left.isNull(i)
+            resultCV.setNull(i, leftCV.isNullAt(i))
             j += 1
           }
         } else {
-          System.arraycopy(left.isNull, 0, result.isNull, 0, n)
+          var i = 0
+          while (i < n) {
+            resultCV.setNull(i, leftCV.isNullAt(i))
+            i += 1
+          }
         }
       }
-    } else if (!left.noNulls && !right.noNulls) {
-      if (left.isRepeating && right.isRepeating) {
-        result.isNull(0) = left.isNull(0) || right.isNull(0)
-        if (result.isNull(0)) {
-          result.isRepeating = true
+    } else if (!leftCV.noNulls && !rightCV.noNulls) {
+      if (leftCV.isRepeating && rightCV.isRepeating) {
+        resultCV.setNull(0, leftCV.isNullAt(0) || rightCV.isNullAt(0))
+        if (resultCV.isNullAt(0)) {
+          resultCV.isRepeating = true
           return
         }
-      } else if (left.isRepeating && !right.isRepeating) {
-        if (left.isNull(0)) {
-          result.isNull(0) = true
-          result.isRepeating = true
+      } else if (leftCV.isRepeating && !rightCV.isRepeating) {
+        if (leftCV.isNullAt(0)) {
+          resultCV.setNull(0, true)
+          resultCV.isRepeating = true
           return
         } else {
           if (selectedInUse) {
             var j = 0
             while (j < n) {
               val i = selected(j)
-              result.isNull(i) = right.isNull(i)
+              resultCV.setNull(i, rightCV.isNullAt(i))
               j += 1
             }
           } else {
-            System.arraycopy(right.isNull, 0, result.isNull, 0, n)
+            var i = 0
+            while (i < n) {
+              resultCV.setNull(i, rightCV.isNullAt(i))
+              i += 1
+            }
           }
         }
-      } else if (!left.isRepeating && right.isRepeating) {
-        if (right.isNull(0)) {
-          result.isNull(0) = true
-          result.isRepeating = true
+      } else if (!leftCV.isRepeating && rightCV.isRepeating) {
+        if (rightCV.isNullAt(0)) {
+          resultCV.setNull(0, true)
+          resultCV.isRepeating = true
           return
         } else {
           if (selectedInUse) {
             var j = 0
             while (j < n) {
               val i = selected(j)
-              result.isNull(i) = left.isNull(i)
+              resultCV.setNull(i, leftCV.isNullAt(i))
               j += 1
             }
           } else {
-            System.arraycopy(left.isNull, 0, result.isNull, 0, n)
+            var i = 0
+            while (i < n) {
+              resultCV.setNull(i, leftCV.isNullAt(i))
+              i += 1
+            }
           }
         }
       } else { // neither side is repeating
@@ -113,13 +125,13 @@ object NullUtils {
           var j = 0
           while (j < n) {
             val i = selected(j)
-            result.isNull(i) = left.isNull(i) || right.isNull(i)
+            resultCV.setNull(i, leftCV.isNullAt(i) || rightCV.isNullAt(i))
             j += 1
           }
         } else {
           var i = 0
           while (i < n) {
-            result.isNull(i) = left.isNull(i) || right.isNull(i)
+            resultCV.setNull(i, leftCV.isNullAt(i) || rightCV.isNullAt(i))
             i += 1
           }
         }
@@ -137,25 +149,22 @@ object NullUtils {
       n: Int,
       selectedInUse: Boolean): Unit = {
 
-    val right = rightCV.asInstanceOf[OnColumnVector]
-    val result = resultCV.asInstanceOf[OnColumnVector]
-
     var hasDivideByZero = false
-    if (right.isRepeating) {
-      if (right.intVector(0) == 0) {
+    if (rightCV.isRepeating) {
+      if (rightCV.getInt(0) == 0) {
         hasDivideByZero = true
-        result.noNulls = false
-        result.isRepeating = true
-        result.isNull(0) = true
+        resultCV.noNulls = false
+        resultCV.isRepeating = true
+        resultCV.setNull(0, true)
       }
     } else {
       if (selectedInUse) {
         var j = 0
         while (j < n) {
           val i = selected(j)
-          if (right.intVector(i) == 0) {
-            result.isNull(i) = true
-            right.intVector(i) = 1 // TODO: check spark sql's divide by zero result
+          if (rightCV.getInt(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putInt(i, 1) // TODO: check spark sql's divide by zero result
             hasDivideByZero = true
           }
           j += 1
@@ -163,9 +172,9 @@ object NullUtils {
       } else {
         var i = 0
         while (i < n) {
-          if (right.intVector(i) == 0) {
-            result.isNull(i) = true
-            right.intVector(i) = 1
+          if (rightCV.getInt(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putInt(i, 1)
             hasDivideByZero = true
           }
           i += 1
@@ -173,7 +182,7 @@ object NullUtils {
       }
     }
 
-    result.noNulls = result.noNulls && !hasDivideByZero
+    resultCV.noNulls = resultCV.noNulls && !hasDivideByZero
   }
 
   /**
@@ -186,25 +195,22 @@ object NullUtils {
     n: Int,
     selectedInUse: Boolean): Unit = {
 
-    val right = rightCV.asInstanceOf[OnColumnVector]
-    val result = resultCV.asInstanceOf[OnColumnVector]
-
     var hasDivideByZero = false
-    if (right.isRepeating) {
-      if (right.longVector(0) == 0) {
+    if (rightCV.isRepeating) {
+      if (rightCV.getLong(0) == 0) {
         hasDivideByZero = true
-        result.noNulls = false
-        result.isRepeating = true
-        result.isNull(0) = true
+        resultCV.noNulls = false
+        resultCV.isRepeating = true
+        resultCV.setNull(0, true)
       }
     } else {
       if (selectedInUse) {
         var j = 0
         while (j < n) {
           val i = selected(j)
-          if (right.longVector(i) == 0) {
-            result.isNull(i) = true
-            right.longVector(i) = 1L // TODO: check spark sql's divide by zero result
+          if (rightCV.getLong(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putLong(i, 1) // TODO: check spark sql's divide by zero result
             hasDivideByZero = true
           }
           j += 1
@@ -212,9 +218,9 @@ object NullUtils {
       } else {
         var i = 0
         while (i < n) {
-          if (right.longVector(i) == 0) {
-            result.isNull(i) = true
-            right.longVector(i) = 1L
+          if (rightCV.getLong(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putLong(i, 1)
             hasDivideByZero = true
           }
           i += 1
@@ -222,7 +228,7 @@ object NullUtils {
       }
     }
 
-    result.noNulls = result.noNulls && !hasDivideByZero
+    resultCV.noNulls = resultCV.noNulls && !hasDivideByZero
   }
 
   /**
@@ -235,25 +241,22 @@ object NullUtils {
     n: Int,
     selectedInUse: Boolean): Unit = {
 
-    val right = rightCV.asInstanceOf[OnColumnVector]
-    val result = resultCV.asInstanceOf[OnColumnVector]
-
     var hasDivideByZero = false
-    if (right.isRepeating) {
-      if (right.doubleVector(0) == 0.0) {
+    if (rightCV.isRepeating) {
+      if (rightCV.getDouble(0) == 0) {
         hasDivideByZero = true
-        result.noNulls = false
-        result.isRepeating = true
-        result.isNull(0) = true
+        resultCV.noNulls = false
+        resultCV.isRepeating = true
+        resultCV.setNull(0, true)
       }
     } else {
       if (selectedInUse) {
         var j = 0
         while (j < n) {
           val i = selected(j)
-          if (right.doubleVector(i) == 0.0) {
-            result.isNull(i) = true
-            right.doubleVector(i) = 1.0 // TODO: check spark sql's divide by zero result
+          if (rightCV.getDouble(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putDouble(i, 1.0) // TODO: check spark sql's divide by zero result
             hasDivideByZero = true
           }
           j += 1
@@ -261,9 +264,9 @@ object NullUtils {
       } else {
         var i = 0
         while (i < n) {
-          if (right.doubleVector(i) == 0.0) {
-            result.isNull(i) = true
-            right.doubleVector(i) = 1.0
+          if (rightCV.getDouble(i) == 0) {
+            resultCV.setNull(i, true)
+            rightCV.putDouble(i, 1.0)
             hasDivideByZero = true
           }
           i += 1
@@ -277,29 +280,27 @@ object NullUtils {
   /**
     * Set the data value for all NULL entries to the designated NULL_VALUE.
     */
-  def setNullDataEntriesInteger(v: ColumnVector,
+  def setNullDataEntriesInteger(cv: ColumnVector,
       selectedInUse: Boolean, sel: Array[Int], n: Int): Unit = {
 
-    val cv = v.asInstanceOf[OnColumnVector]
-
     if (cv.noNulls) {
       return
-    } else if (cv.isRepeating && cv.isNull(0)) {
-      cv.intVector(0) = 1
+    } else if (cv.isRepeating && cv.isNullAt(0)) {
+      cv.putInt(0, 1)
     } else if (selectedInUse) {
       var j = 0
       while (j < n) {
         val i = sel(j)
-        if (cv.isNull(i)) {
-          cv.intVector(i) = 1
+        if (cv.isNullAt(i)) {
+          cv.putInt(i, 1)
         }
         j += 1
       }
     } else {
       var i = 0
       while (i < n) {
-        if (cv.isNull(i)) {
-          cv.intVector(i) = 1
+        if (cv.isNullAt(i)) {
+          cv.putInt(i, 1)
         }
         i += 1
       }
@@ -309,29 +310,27 @@ object NullUtils {
   /**
     * Set the data value for all NULL entries to the designated NULL_VALUE.
     */
-  def setNullDataEntriesLong(v: ColumnVector,
+  def setNullDataEntriesLong(cv: ColumnVector,
     selectedInUse: Boolean, sel: Array[Int], n: Int): Unit = {
-
-    val cv = v.asInstanceOf[OnColumnVector]
 
     if (cv.noNulls) {
       return
-    } else if (cv.isRepeating && cv.isNull(0)) {
-      cv.longVector(0) = 1L
+    } else if (cv.isRepeating && cv.isNullAt(0)) {
+      cv.putLong(0, 1L)
     } else if (selectedInUse) {
       var j = 0
       while (j < n) {
         val i = sel(j)
-        if (cv.isNull(i)) {
-          cv.longVector(i) = 1L
+        if (cv.isNullAt(i)) {
+          cv.putLong(i, 1L)
         }
         j += 1
       }
     } else {
       var i = 0
       while (i < n) {
-        if (cv.isNull(i)) {
-          cv.longVector(i) = 1L
+        if (cv.isNullAt(i)) {
+          cv.putLong(i, 1L)
         }
         i += 1
       }
@@ -341,49 +340,45 @@ object NullUtils {
   /**
     * Set the data value for all NULL entries to the designated NULL_VALUE.
     */
-  def setNullDataEntriesDouble(v: ColumnVector,
+  def setNullDataEntriesDouble(cv: ColumnVector,
     selectedInUse: Boolean, sel: Array[Int], n: Int): Unit = {
-
-    val cv = v.asInstanceOf[OnColumnVector]
 
     if (cv.noNulls) {
       return
-    } else if (cv.isRepeating && cv.isNull(0)) {
-      cv.doubleVector(0) = Double.NaN
+    } else if (cv.isRepeating && cv.isNullAt(0)) {
+      cv.putDouble(0, Double.NaN)
     } else if (selectedInUse) {
       var j = 0
       while (j < n) {
         val i = sel(j)
-        if (cv.isNull(i)) {
-          cv.doubleVector(i) = Double.NaN
+        if (cv.isNullAt(i)) {
+          cv.putDouble(i, Double.NaN)
         }
         j += 1
       }
     } else {
       var i = 0
       while (i < n) {
-        if (cv.isNull(i)) {
-          cv.doubleVector(i) = Double.NaN
+        if (cv.isNullAt(i)) {
+          cv.putDouble(i, Double.NaN)
         }
         i += 1
       }
     }
   }
 
-  def filterNulls(cv: ColumnVector, selectedInUse: Boolean, selected: Array[Int], n: Int): Int = {
-
-    val v = cv.asInstanceOf[OnColumnVector]
+  def filterNulls(v: ColumnVector, selectedInUse: Boolean, selected: Array[Int], n: Int): Int = {
 
     var newSize = 0
     if (v.noNulls) {
       n
     } else if (v.isRepeating) {
-      if (v.isNull(0)) 0 else n
+      if (v.isNullAt(0)) 0 else n
     } else if (selectedInUse) {
       var j = 0
       while (j < n) {
         val i = selected(j)
-        if (!v.isNull(i)) {
+        if (!v.isNullAt(i)) {
           selected(newSize) = i
           newSize += 1
         }
@@ -393,7 +388,7 @@ object NullUtils {
     } else {
       var i = 0
       while (i < n) {
-        if (!v.isNull(i)) {
+        if (!v.isNullAt(i)) {
           selected(newSize) = i
           newSize += 1
         }
@@ -404,19 +399,18 @@ object NullUtils {
   }
 
   def filterNonNulls(
-      cv: ColumnVector, selectedInUse: Boolean, selected: Array[Int], n: Int): Int = {
-    val v = cv.asInstanceOf[OnColumnVector]
+      v: ColumnVector, selectedInUse: Boolean, selected: Array[Int], n: Int): Int = {
 
     var newSize = 0
     if (v.noNulls) {
       0
     } else if (v.isRepeating) {
-      if (v.isNull(0)) n else 0
+      if (v.isNullAt(0)) n else 0
     } else if (selectedInUse) {
       var j = 0
       while (j < n) {
         val i = selected(j)
-        if (v.isNull(i)) {
+        if (v.isNullAt(i)) {
           selected(newSize) = i
           newSize += 1
         }
@@ -426,7 +420,7 @@ object NullUtils {
     } else {
       var i = 0
       while (i < n) {
-        if (v.isNull(i)) {
+        if (v.isNullAt(i)) {
           selected(newSize) = i
           newSize += 1
         }

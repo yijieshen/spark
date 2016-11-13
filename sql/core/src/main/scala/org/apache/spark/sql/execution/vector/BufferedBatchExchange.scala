@@ -77,7 +77,7 @@ case class BufferedBatchExchange(
 
   private lazy val serializer: Serializer = {
     if (tungstenMode) {
-      new DirectRowBatchSerializer(output, defaultCapacity, shouldReuseRowBatch)
+      new DirectRowBatchSerializer(output, defaultCapacity, shouldReuseRowBatch, this)
     } else {
       new SparkSqlSerializer(sparkConf)
     }

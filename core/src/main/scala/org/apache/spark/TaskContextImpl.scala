@@ -18,12 +18,13 @@
 package org.apache.spark
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
-
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.util.{TaskCompletionListener, TaskCompletionListenerException}
+
+import scala.collection.mutable
 
 private[spark] class TaskContextImpl(
     val stageId: Int,
@@ -123,11 +124,14 @@ private[spark] class TaskContextImpl(
     internalAccumulators.map { a => (a.name.get, a) }.toMap
   }
 
-  @volatile private var consumer: Any = null
+  @volatile private var operatorToConsumer: mutable.HashMap[Any, Any] = null
 
-  override def setMemoryConsumer(consumer: Any): Unit = {
-    this.consumer = consumer
+  override def setMemoryConsumer(operator: Any, consumer: Any): Unit = {
+    if (operatorToConsumer == null) {
+      operatorToConsumer = mutable.HashMap.empty[Any, Any]
+    }
+    operatorToConsumer.put(operator, consumer)
   }
 
-  override def getMemoryConsumer(): Any = consumer
+  override def getMemoryConsumer(operator: Any): Any = operatorToConsumer.getOrElse(operator, null)
 }

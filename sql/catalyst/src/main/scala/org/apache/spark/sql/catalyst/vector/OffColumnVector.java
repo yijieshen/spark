@@ -50,6 +50,43 @@ public class OffColumnVector extends ColumnVector {
     }
   }
 
+  public OffColumnVector(ColumnVector other) {
+    super(other.dataType, other.capacity);
+    isNull = 0;
+    data = 0;
+    lengths = 0;
+    starts = 0;
+    totalLen = 0;
+
+    doAllocate();
+    noNulls = other.noNulls;
+    isRepeating = other.isRepeating;
+
+    if (dataType instanceof StringType) {
+      for (int i = 0; i < capacity; i ++) {
+        setNull(i, other.isNullAt(i));
+        putString(i, other.getString(i));
+      }
+    } else if (dataType instanceof IntegerType) {
+      for (int i = 0; i < capacity; i ++) {
+        setNull(i, other.isNullAt(i));
+        putInt(i, other.getInt(i));
+      }
+    } else if (dataType instanceof LongType){
+      for (int i = 0; i < capacity; i ++) {
+        setNull(i, other.isNullAt(i));
+        putLong(i, other.getLong(i));
+      }
+    } else if (dataType instanceof DoubleType) {
+      for (int i = 0; i < capacity; i ++) {
+        setNull(i, other.isNullAt(i));
+        putDouble(i, other.getDouble(i));
+      }
+    } else {
+      throw new RuntimeException("Unhandled " + dataType);
+    }
+  }
+
   @Override
   public void putNull(int rowId) {
     Platform.putByte(null, isNull + rowId, (byte) 1);

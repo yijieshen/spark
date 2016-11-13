@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.vector
 
 import scala.collection.JavaConverters._
 
+import org.apache.spark.memory.MemoryConsumer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
@@ -28,6 +29,7 @@ import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.execution.{LeafNode, SparkPlan, UnaryNode}
 import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.types.LongType
+import org.apache.spark.TaskContext
 
 case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) extends UnaryNode {
 
@@ -54,8 +56,15 @@ case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) ext
     val numRows = longMetric("numRows")
     child.batchExecute().mapPartitionsInternal { iter =>
       val project = BatchProjection.create(projectList, child.output,
-        subexpressionEliminationEnabled, defaultBatchCapacity)
+        subexpressionEliminationEnabled, defaultBatchCapacity, shouldReuseRowBatch)
+      val parent = this.getParent()
+      val context = TaskContext.get()
+      val manager = context.taskMemoryManager()
+
       iter.map { rowBatch =>
+        if (!shouldReuseRowBatch) {
+          project.set(manager, context.getMemoryConsumer(parent).asInstanceOf[MemoryConsumer])
+        }
         numRows += rowBatch.size
         project(rowBatch)
       }

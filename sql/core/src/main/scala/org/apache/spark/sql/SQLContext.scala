@@ -906,7 +906,8 @@ class SQLContext private[sql](
     val batches = Seq(
       Batch("Add exchange", Once, EnsureRequirements(self)),
       Batch("Add row converters", Once, EnsureRowFormats),
-      Batch("Disable row batch reuse", Once, DisableRowBatchReuse)
+      Batch("Disable row batch reuse", Once, DisableRowBatchReuse),
+      Batch("Add index to each operator", Once, SetParentForOperator)
     )
   }
 

@@ -42,7 +42,7 @@ class BatchConditionalExpressionSuite extends SparkFunSuite {
     rb.reset()
     val plan = GenerateBatchProjection.generate(
       CaseWhen(In(BoundReference(0, StringType, false), Literal("abcd") :: Literal("nop") :: Nil) ::
-        BoundReference(1, IntegerType, false) :: Literal(-1) :: Nil) :: Nil, false, 5)
+        BoundReference(1, IntegerType, false) :: Literal(-1) :: Nil) :: Nil, false, 5, true)
 
     val nrb = plan.apply(rb)
     assert(nrb.size === 5)

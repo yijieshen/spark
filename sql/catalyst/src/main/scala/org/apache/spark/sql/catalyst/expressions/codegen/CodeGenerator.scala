@@ -25,10 +25,11 @@ import com.google.common.cache.{CacheBuilder, CacheLoader}
 import org.codehaus.janino.ClassBodyEvaluator
 
 import org.apache.spark.Logging
+import org.apache.spark.memory.{MemoryConsumer, MemoryMode, TaskMemoryManager}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.vector._
-import org.apache.spark.sql.catalyst.util.{MapData, ArrayData}
+import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
 import org.apache.spark.sql.catalyst.vector._
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.Platform
@@ -574,10 +575,17 @@ class CodeGenContext {
     * elimination will be performed. Subexpression elimination assumes that the code will for each
     * expression will be combined in the `expressions` order.
     */
-  def generateBatchExpressions(expressions: Seq[BatchExpression],
-    doSubexpressionElimination: Boolean = false): Seq[GeneratedBatchExpressionCode] = {
+  def generateBatchExpressions(
+      expressions: Seq[BatchExpression],
+      doSubexpressionElimination: Boolean = false,
+      generateOffHeapColumnVector: Boolean = false): Seq[GeneratedBatchExpressionCode] = {
     if (doSubexpressionElimination) subBatchExpressionElimination(expressions)
-    expressions.map(e => e.gen(this))
+    expressions.map { e =>
+      if (generateOffHeapColumnVector) {
+        e.generateOffHeapColumnVector = true
+      }
+      e.gen(this)
+    }
   }
 
 }
@@ -677,7 +685,10 @@ object CodeGenerator extends Logging {
       classOf[RowBatch].getName,
       classOf[ColumnVector].getName,
       classOf[OnColumnVector].getName,
-      classOf[OffColumnVector].getName
+      classOf[OffColumnVector].getName,
+      classOf[TaskMemoryManager].getName,
+      classOf[MemoryConsumer].getName,
+      classOf[MemoryMode].getName
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
 

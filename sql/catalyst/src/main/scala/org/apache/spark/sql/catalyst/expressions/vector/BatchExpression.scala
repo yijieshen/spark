@@ -154,6 +154,8 @@ abstract class BatchExpression extends TreeNode[BatchExpression] {
   protected def toCommentSafeString: String = this.toString
     .replace("*/", "\\*\\/")
     .replace("\\u", "\\\\u")
+
+  var generateOffHeapColumnVector: Boolean = false
 }
 
 /**

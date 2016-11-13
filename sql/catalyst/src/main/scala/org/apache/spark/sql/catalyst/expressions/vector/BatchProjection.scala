@@ -17,12 +17,14 @@
 
 package org.apache.spark.sql.catalyst.expressions.vector
 
+import org.apache.spark.memory.{MemoryConsumer, MemoryMode, TaskMemoryManager}
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.codegen.{ExpressionCanonicalizer, CodeGenerator}
+import org.apache.spark.sql.catalyst.expressions.codegen.{CodeGenerator, ExpressionCanonicalizer}
 import org.apache.spark.sql.catalyst.vector.RowBatch
 
 abstract class BatchProjection {
   def apply(rowBatch: RowBatch): RowBatch
+  def set(manager: TaskMemoryManager, consumer: MemoryConsumer): Unit
 }
 
 object BatchProjection {
@@ -35,13 +37,15 @@ object BatchProjection {
       exprs: Seq[Expression],
       inputSchema: Seq[Attribute],
       subexpressionEliminationEnabled: Boolean = false,
-      defaultCapacity: Int = RowBatch.DEFAULT_CAPACITY): BatchProjection = {
+      defaultCapacity: Int = RowBatch.DEFAULT_CAPACITY,
+      shouldReuseRowBatch: Boolean = true): BatchProjection = {
     val e = exprs.map(BindReferences.bindReference(_, inputSchema))
       .map(_ transform {
         case CreateStruct(children) => CreateStructUnsafe(children)
         case CreateNamedStruct(children) => CreateNamedStructUnsafe(children)
       })
-    GenerateBatchProjection.generate(e, subexpressionEliminationEnabled, defaultCapacity)
+    GenerateBatchProjection.generate(
+      e, subexpressionEliminationEnabled, defaultCapacity, shouldReuseRowBatch)
   }
 }
 
@@ -60,8 +64,13 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
   def generate(
       expressions: Seq[Expression],
       subexpressionEliminationEnabled: Boolean,
-      defaultCapacity: Int): BatchProjection = {
-    create(expressions, subexpressionEliminationEnabled, defaultCapacity)
+      defaultCapacity: Int,
+      shouldReuseRowBatch: Boolean): BatchProjection = {
+    if (shouldReuseRowBatch) {
+      createWithRowBatchReuse(expressions, subexpressionEliminationEnabled, defaultCapacity)
+    } else {
+      createWithoutRowBatchReuse(expressions, subexpressionEliminationEnabled, defaultCapacity)
+    }
   }
 
   /**
@@ -69,9 +78,9 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
     * already available.
     */
   override protected def create(in: Seq[Expression]): BatchProjection =
-    create(in, false, RowBatch.DEFAULT_CAPACITY)
+    createWithRowBatchReuse(in, false, RowBatch.DEFAULT_CAPACITY)
 
-  private def create(
+  private def createWithRowBatchReuse(
       expressions: Seq[Expression],
       subexpressionEliminationEnabled: Boolean,
       defaultCapacity: Int): BatchProjection = {
@@ -111,6 +120,8 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
           ${initMutableStates(ctx)}
         }
 
+        public void set(TaskMemoryManager manager, MemoryConsumer consumer) {}
+
         public java.lang.Object apply(java.lang.Object rowBatch) {
           return apply((RowBatch) rowBatch);
         }
@@ -125,6 +136,94 @@ object GenerateBatchProjection extends CodeGenerator[Seq[Expression], BatchProje
           $result.sorted = ${ctx.INPUT_ROWBATCH}.sorted;
           $evals
           return $result;
+        }
+      }
+      """
+
+    val c = CodeGenerator.compile(code)
+    c.generate(ctx.references.toArray).asInstanceOf[BatchProjection]
+  }
+
+  private def createWithoutRowBatchReuse(
+      expressions: Seq[Expression],
+      subexpressionEliminationEnabled: Boolean,
+      defaultCapacity: Int): BatchProjection = {
+    val ctx = newCodeGenContext()
+    ctx.setBatchCapacity(defaultCapacity)
+
+    val batchExpressions = expressions.map(exprToBatch)
+    val exprEvals =
+      ctx.generateBatchExpressions(batchExpressions, subexpressionEliminationEnabled, true)
+
+    // Reset the subexpression values for each row.
+    val subexprReset = ctx.subExprResetVariables.mkString("\n")
+
+    val evals = exprEvals.zipWithIndex.map { case (eval, index) =>
+      s"""
+        ${eval.code}
+        result.columns[$index] = ${eval.value};
+      """
+    }.mkString("\n")
+
+    val estimatedBatchSize: Long = RowBatch.estimateMemoryFootprint(
+      expressions.map(_.dataType).toArray, defaultCapacity, MemoryMode.OFF_HEAP)
+
+    val allocateGranularity: Long = 16 * 1024 * 1024;
+
+    val code = s"""
+      public java.lang.Object generate($exprType[] exprs) {
+        return new SpecificBatchProjection(exprs);
+      }
+
+      class SpecificBatchProjection extends ${classOf[BatchProjection].getName} {
+
+        private $exprType[] expressions;
+        private TaskMemoryManager manager;
+        private MemoryConsumer consumer;
+        ${declareMutableStates(ctx)}
+        ${declareAddedFunctions(ctx)}
+
+        public SpecificBatchProjection($exprType[] expressions) {
+          this.expressions = expressions;
+          ${initMutableStates(ctx)}
+        }
+
+        public void set(TaskMemoryManager manager, MemoryConsumer consumer) {
+          this.manager = manager;
+          this.consumer = consumer;
+        }
+
+        public java.lang.Object apply(java.lang.Object rowBatch) {
+          return apply((RowBatch) rowBatch);
+        }
+
+        public RowBatch apply(RowBatch ${ctx.INPUT_ROWBATCH}) {
+          $subexprReset
+
+          if (consumer == null || manager == null) {
+            throw new RuntimeException("consumer or manager should be set first to apply for memory");
+          }
+
+          if (consumer.getAllocated() >= $estimatedBatchSize) {
+            consumer.minusAllocated($estimatedBatchSize);
+          } else {
+            manager.acquireExecutionMemory(
+              $allocateGranularity, MemoryMode.OFF_HEAP, consumer);
+            consumer.addUsed($allocateGranularity);
+            consumer.setAllocated($allocateGranularity - $estimatedBatchSize);
+          }
+
+          RowBatch result = new RowBatch(${expressions.size});
+
+          result.capacity = ${ctx.INPUT_ROWBATCH}.capacity;
+          result.size = ${ctx.INPUT_ROWBATCH}.size;
+          result.selected = null; // ${ctx.INPUT_ROWBATCH}.selected;
+          result.selectedInUse = false; // ${ctx.INPUT_ROWBATCH}.selectedInUse;
+          result.endOfFile = ${ctx.INPUT_ROWBATCH}.endOfFile;
+          result.sorted = (int[]) ${ctx.INPUT_ROWBATCH}.sorted.clone();
+          $evals
+
+          return result;
         }
       }
       """

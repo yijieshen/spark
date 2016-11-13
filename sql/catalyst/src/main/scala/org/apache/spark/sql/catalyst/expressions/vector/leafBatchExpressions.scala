@@ -30,7 +30,15 @@ case class BatchBoundReference(underlyingExpr: BoundReference) extends LeafBatch
 
   override protected def genCode(
     ctx: CodeGenContext, ev: GeneratedBatchExpressionCode): String = {
-    s"ColumnVector ${ev.value} = ${ctx.INPUT_ROWBATCH}.columns[$ordinal];"
+    if (generateOffHeapColumnVector) {
+      s"""
+        ColumnVector ${ev.value} = new OffColumnVector(${ctx.INPUT_ROWBATCH}.columns[$ordinal]);
+      """
+    } else {
+      s"""
+        ColumnVector ${ev.value} = ${ctx.INPUT_ROWBATCH}.columns[$ordinal];
+      """
+    }
   }
 }
 

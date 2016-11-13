@@ -30,22 +30,25 @@ import org.apache.spark.sql.catalyst.expressions.vector.{BatchRead, GenerateBatc
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.DataType
 import org.apache.spark.TaskContext
+import org.apache.spark.sql.execution.SparkPlan
 
 class DirectRowBatchSerializer(
     schema: Seq[Attribute],
     defaultCapacity: Int,
-    shouldReuseBatch: Boolean) extends Serializer with Serializable {
+    shouldReuseBatch: Boolean,
+    operator: SparkPlan) extends Serializer with Serializable {
 
   override def newInstance(): SerializerInstance =
     new DirectRowBatchSerializerInstance(
-      schema, defaultCapacity, shouldReuseBatch)
+      schema, defaultCapacity, shouldReuseBatch, operator)
   override private[spark] def supportsRelocationOfSerializedObjects: Boolean = true
 }
 
 private class DirectRowBatchSerializerInstance(
     schema: Seq[Attribute],
     defaultCapacity: Int,
-    shouldReuseBatch: Boolean) extends SerializerInstance {
+    shouldReuseBatch: Boolean,
+    operator: SparkPlan) extends SerializerInstance {
 
   /**
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
@@ -188,7 +191,7 @@ private class DirectRowBatchSerializerInstance(
         private[this] val taskContext: TaskContext = TaskContext.get()
         private[this] val taskMemoryManager: TaskMemoryManager = taskContext.taskMemoryManager()
         private[this] val consumer: MemoryConsumer =
-          taskContext.getMemoryConsumer().asInstanceOf[MemoryConsumer]
+          taskContext.getMemoryConsumer(operator.getParent()).asInstanceOf[MemoryConsumer]
 
         private[this] val allocateGranularity: Long = 16 * 1024 * 1024; // 16 MB
 
