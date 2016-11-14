@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution
 
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -172,6 +172,16 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
   }
 
   def getParent(): SparkPlan = parent
+
+  def getParentId(): Int = parent.getId()
+
+  private var _id: Int = 0
+
+  def setId(id: Int): Unit = {
+    _id = id
+  }
+
+  def getId(): Int = _id
 
   /**
    * Prepare a SparkPlan for execution. It's idempotent.

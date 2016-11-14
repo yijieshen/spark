@@ -66,14 +66,14 @@ case class BatchSort(
 
     child.batchExecute().mapPartitionsInternal { iter =>
       val rowVectorProjection = BatchProjection.create(
-        V2R(output) :: Nil, output, false, defaultBatchCapacity)
+        V2R(output) :: Nil, output, false, defaultBatchCapacity, true)
       val ordering = newOrdering(sortOrder, childOutput)
 
       val boundSortExpression = BindReferences.bindReference(sortOrder.head, childOutput)
       val prefixComparator = SortPrefixUtils.getPrefixComparator(boundSortExpression)
 
       val prefixProjection = BatchProjection.create(
-        SortPrefix(sortOrder.head) :: Nil, childOutput, false, defaultBatchCapacity)
+        SortPrefix(sortOrder.head) :: Nil, childOutput, false, defaultBatchCapacity, true)
 
       val needFurtherComparisonBesidesPrefix = BatchOrderings.needFurtherCompare(sortOrder)
       val innerBatchFullComparator = GenerateBatchOrdering.generate(

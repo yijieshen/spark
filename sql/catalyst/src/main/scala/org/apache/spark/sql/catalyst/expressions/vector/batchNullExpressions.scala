@@ -171,7 +171,7 @@ case class BatchCoalesce(
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}On(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $batchSize);
     """
   }
@@ -197,7 +197,7 @@ case class BatchIsNull(
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
       int $newSize;
-      $newSize = $nu.filterNonNulls(${childEval.value}, $selectedInUse, $sel, $batchSize);
+      $newSize = $nu.filterNonNullsOn(${childEval.value}, $selectedInUse, $sel, $batchSize);
       if ($newSize < $batchSize) {
         ${ctx.INPUT_ROWBATCH}.size = $newSize;
         ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -227,7 +227,7 @@ case class BatchIsNotNull(
       int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
       boolean $selectedInUse = ${ctx.INPUT_ROWBATCH}.selectedInUse;
       int $newSize;
-      $newSize = $nu.filterNulls(${childEval.value}, $selectedInUse, $sel, $batchSize);
+      $newSize = $nu.filterNullsOn(${childEval.value}, $selectedInUse, $sel, $batchSize);
       if ($newSize < $batchSize) {
         ${ctx.INPUT_ROWBATCH}.size = $newSize;
         ${ctx.INPUT_ROWBATCH}.selectedInUse = true;

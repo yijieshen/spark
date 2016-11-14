@@ -106,7 +106,7 @@ case class BatchExchange(
       case h: HashPartitioning =>
         BatchProjection.create(
           h.partitionIdExpression :: Nil, child.output,
-          false, defaultBatchCapacity)
+          false, defaultBatchCapacity, true)
       case _ => sys.error(s"BatchExchange not implemented for $newPartitioning")
     }
 

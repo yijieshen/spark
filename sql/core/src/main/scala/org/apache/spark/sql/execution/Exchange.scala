@@ -417,10 +417,12 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
     children = children.zip(requiredChildDistributions).map { case (child, distribution) =>
       if (child.outputPartitioning.satisfies(distribution)) {
         child
-      } else if (vectorizedShuffleEnabled && child.outputsRowBatches){
+      } else if (vectorizedShuffleEnabled && child.outputsRowBatches
+          && distribution.isInstanceOf[ClusteredDistribution]){
         BatchExchange(
           createPartitioning(distribution, defaultNumPreShufflePartitions), child)
-      } else if (vectorizedBufferedShuffleEnabled && child.outputsRowBatches){
+      } else if (vectorizedBufferedShuffleEnabled && child.outputsRowBatches
+          && distribution.isInstanceOf[ClusteredDistribution]){
         BufferedBatchExchange(
           createPartitioning(distribution, defaultNumPreShufflePartitions), child)
       } else {

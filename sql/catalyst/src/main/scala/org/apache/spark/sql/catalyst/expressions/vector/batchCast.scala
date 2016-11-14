@@ -84,7 +84,7 @@ case class BatchCast(
           * in complex arithmetic expressions like col2 / (col1 - 1)
           * in the case when some col1 entries are null.
           */
-         $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+         $nu.setNullDataEntries${ctx.boxedType(dataType)}On(
            ${ev.value}, $selectedInUse, $sel, $batchSize);
          """
       } else ""

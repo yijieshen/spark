@@ -54,13 +54,13 @@ abstract class BatchStringPredicate extends BinaryBatchExpression {
 
       // filter rows with NULL on left input
       int $newSize;
-      $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+      $newSize = $nu.filterNullsOn(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
       if ($newSize < $n) {
         $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
         ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
       }
 
-      $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+      $newSize = $nu.filterNullsOn(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
       if ($newSize < $n) {
         $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
         ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -213,7 +213,7 @@ case class BatchLike(
 
           // filter rows with NULL on left input
           int $newSize;
-          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          $newSize = $nu.filterNullsOn(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
             $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
             ${ctx.INPUT_ROWBATCH}.selectedInUse = true;

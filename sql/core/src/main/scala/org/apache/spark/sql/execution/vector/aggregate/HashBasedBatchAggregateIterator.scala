@@ -125,10 +125,10 @@ abstract class BatchAggregateIterator(
 
   protected val keyWrapper: BatchProjection =
     BatchProjection.create(V2R(groupingExpressions) :: Nil,
-      inputAttributes, false, defaultCapacity)
+      inputAttributes, false, defaultCapacity, true)
   protected val hasher: BatchProjection =
     BatchProjection.create(new Murmur3Hash(groupingExpressions, 0) :: Nil,
-      inputAttributes, false, defaultCapacity)
+      inputAttributes, false, defaultCapacity, true)
 
   protected val updater: BatchBufferUpdate =
     GenerateBatchBufferUpdate.generate(

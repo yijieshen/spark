@@ -22,15 +22,22 @@ import org.apache.spark.sql.catalyst.rules.Rule
 private[sql] object SetParentForOperator extends Rule[SparkPlan]  {
 
   override def apply(plan: SparkPlan): SparkPlan = {
+    var i: Int = 0
     plan.transformDown {
       case bi: BinaryNode =>
         bi.left.setParent(bi)
         bi.right.setParent(bi)
+        bi.setId(i)
+        i += 1
         bi
       case ui: UnaryNode =>
         ui.child.setParent(ui)
+        ui.setId(i)
+        i += 1
         ui
       case o =>
+        o.setId(i)
+        i += 1
         o
     }
   }

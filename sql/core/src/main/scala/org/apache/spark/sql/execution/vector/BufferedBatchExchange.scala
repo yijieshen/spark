@@ -44,9 +44,7 @@ case class BufferedBatchExchange(
         s"(coordinator id: ${System.identityHashCode(coordinator)})"
       case None => ""
     }
-
-    val simpleNodeName = if (tungstenMode) "BufferedBatchExchange" else "Exchange"
-    s"$simpleNodeName$extraInfo"
+    s"BufferedBatchExchange$extraInfo"
   }
 
   /**
@@ -77,7 +75,7 @@ case class BufferedBatchExchange(
 
   private lazy val serializer: Serializer = {
     if (tungstenMode) {
-      new DirectRowBatchSerializer(output, defaultCapacity, shouldReuseRowBatch, this)
+      new DirectRowBatchSerializer(output, defaultCapacity, shouldReuseRowBatch, this.getParentId())
     } else {
       new SparkSqlSerializer(sparkConf)
     }
@@ -113,7 +111,8 @@ case class BufferedBatchExchange(
     }
     def getPartitionKeyExtractor(): BatchProjection = newPartitioning match {
       case h: HashPartitioning =>
-        BatchProjection.create(h.partitionIdExpression :: Nil, child.output, false, defaultCapacity)
+        BatchProjection.create(
+          h.partitionIdExpression :: Nil, child.output, false, defaultCapacity, true)
       case _ => sys.error(s"BufferedBatchExchange not implemented for $newPartitioning")
     }
 
