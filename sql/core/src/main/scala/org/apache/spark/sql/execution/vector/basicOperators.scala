@@ -57,16 +57,20 @@ case class BatchProject(projectList: Seq[NamedExpression], child: SparkPlan) ext
     child.batchExecute().mapPartitionsInternal { iter =>
       val project = BatchProjection.create(projectList, child.output,
         subexpressionEliminationEnabled, defaultBatchCapacity, shouldReuseRowBatch)
-      val parent = this.getParent()
-      val context = TaskContext.get()
-      val manager = context.taskMemoryManager()
-
-      iter.map { rowBatch =>
-        if (!shouldReuseRowBatch) {
-          project.set(manager, context.getMemoryConsumer(parent).asInstanceOf[MemoryConsumer])
+      if (shouldReuseRowBatch) {
+        iter.map { rowBatch =>
+          numRows += rowBatch.size
+          project(rowBatch)
         }
-        numRows += rowBatch.size
-        project(rowBatch)
+      } else {
+        val parentId = this.getParent().getId()
+        val context = TaskContext.get()
+        val manager = context.taskMemoryManager()
+        iter.map { rowBatch =>
+          project.set(manager, context.getMemoryConsumer(parentId).asInstanceOf[MemoryConsumer])
+          numRows += rowBatch.size
+          project(rowBatch)
+        }
       }
     }
   }

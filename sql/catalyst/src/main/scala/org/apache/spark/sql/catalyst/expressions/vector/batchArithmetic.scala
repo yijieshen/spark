@@ -43,6 +43,8 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
       s"OnColumnVector ${ev.value} = ${ctx.newVector(s"${ctx.INPUT_ROWBATCH}.capacity", dataType)};"
     }
 
+    val mode: String = if (generateOffHeapColumnVector) "Off" else "On"
+
     s"""
       ${eval1.code}
       ${eval2.code}
@@ -55,7 +57,7 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
         ${eval1.value}.isRepeating && !${eval1.value}.noNulls && ${eval1.value}.isNullAt(0) ||
         ${eval2.value}.isRepeating && !${eval2.value}.noNulls && ${eval2.value}.isNullAt(0);
-      $nu.propagateNullsForBinaryExpression(
+      $nu.propagateNullsForBinaryExpression$mode(
         ${eval1.value}, ${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
 
@@ -111,7 +113,7 @@ abstract class BinaryBatchArithmetic extends BinaryBatchOperator {
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}$mode(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $batchSize);
 
     """
@@ -189,10 +191,10 @@ case class BatchDivide(
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
         ${eval1.value}.isRepeating && !${eval1.value}.noNulls && ${eval1.value}.isNullAt(0) ||
         ${eval2.value}.isRepeating && !${eval2.value}.noNulls && ${eval2.value}.isNullAt(0);
-      $nu.propagateNullsForBinaryExpression(
+      $nu.propagateNullsForBinaryExpressionOn(
         ${eval1.value}, ${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
-      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}(${eval2.value}, ${ev.value},
+      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}On(${eval2.value}, ${ev.value},
         $sel, $batchSize, ${ctx.INPUT_ROWBATCH}.selectedInUse);
 
       /*
@@ -248,7 +250,7 @@ case class BatchDivide(
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}On(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $batchSize);
 
     """
@@ -287,10 +289,10 @@ case class BatchPmod(
         ${eval1.value}.isRepeating && ${eval2.value}.isRepeating ||
         ${eval1.value}.isRepeating && !${eval1.value}.noNulls && ${eval1.value}.isNullAt(0) ||
         ${eval2.value}.isRepeating && !${eval2.value}.noNulls && ${eval2.value}.isNullAt(0);
-      $nu.propagateNullsForBinaryExpression(
+      $nu.propagateNullsForBinaryExpressionOn(
         ${eval1.value}, ${eval2.value}, ${ev.value},
         $sel, $batchSize, $selectedInUse);
-      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}(${eval2.value}, ${ev.value},
+      $nu.propagateZeroDenomAsNulls${ctx.boxedType(dataType)}On(${eval2.value}, ${ev.value},
         $sel, $batchSize, $selectedInUse);
 
       if (${eval1.value}.isRepeating && ${eval2.value}.isRepeating) {

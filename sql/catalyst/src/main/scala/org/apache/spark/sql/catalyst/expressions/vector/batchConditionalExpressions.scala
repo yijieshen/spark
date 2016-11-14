@@ -178,7 +178,7 @@ case class BatchIf(
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}On(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $initialSelected, $initialSize);
     """
   }
@@ -340,7 +340,7 @@ case class BatchCaseWhen(
        * in complex arithmetic expressions like col2 / (col1 - 1)
        * in the case when some col1 entries are null.
        */
-      $nu.setNullDataEntries${ctx.boxedType(dataType)}(
+      $nu.setNullDataEntries${ctx.boxedType(dataType)}On(
         ${ev.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $initialSelected, $initialSize);
     """
   }

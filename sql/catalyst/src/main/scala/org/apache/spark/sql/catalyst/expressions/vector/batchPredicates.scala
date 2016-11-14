@@ -47,13 +47,13 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
 
         // filter rows with NULL on left input
         int $newSize;
-        $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
         }
 
-        $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -139,13 +139,13 @@ abstract class BinaryBatchComparison extends BinaryBatchOperator {
 
         // filter rows with NULL on left input
         int $newSize;
-        $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
         }
 
-        $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -260,13 +260,13 @@ case class BatchEqualTo(
 
         // filter rows with NULL on left input
         int $newSize;
-        $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
         }
 
-        $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -366,13 +366,13 @@ case class BatchEqualTo(
 
         // filter rows with NULL on left input
         int $newSize;
-        $newSize = $nu.filterNulls(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval1.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
         }
 
-        $newSize = $nu.filterNulls(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+        $newSize = $nu.filterNullsOn(${eval2.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
         if ($newSize < $n) {
           $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
           ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -538,7 +538,7 @@ case class BatchIn(
           UTF8String $str;
 
           int $newSize;
-          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          $newSize = $nu.filterNullsOn(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
             $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
             ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -580,7 +580,7 @@ case class BatchIn(
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
           int $newSize;
-          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          $newSize = $nu.filterNullsOn(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
             $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
             ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -653,7 +653,7 @@ case class BatchInSet(
           UTF8String $str;
 
           int $newSize;
-          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          $newSize = $nu.filterNullsOn(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
             $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
             ${ctx.INPUT_ROWBATCH}.selectedInUse = true;
@@ -695,7 +695,7 @@ case class BatchInSet(
           int[] $sel = ${ctx.INPUT_ROWBATCH}.selected;
 
           int $newSize;
-          $newSize = $nu.filterNulls(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
+          $newSize = $nu.filterNullsOn(${eval.value}, ${ctx.INPUT_ROWBATCH}.selectedInUse, $sel, $n);
           if ($newSize < $n) {
             $n = ${ctx.INPUT_ROWBATCH}.size = $newSize;
             ${ctx.INPUT_ROWBATCH}.selectedInUse = true;

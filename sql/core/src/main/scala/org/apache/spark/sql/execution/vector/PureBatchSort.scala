@@ -83,7 +83,7 @@ case class PureBatchSort(
       // figure out how many bytes we spilled for this operator.
       val spillSizeBefore = TaskContext.get().taskMetrics().memoryBytesSpilled
 
-      TaskContext.get().setMemoryConsumer(this, sorter.sorter)
+      TaskContext.get().setMemoryConsumer(this.getId(), sorter.sorter)
       val sortedIterator = sorter.sort(iter)
 
       dataSize += sorter.peakMemoryUsage()
