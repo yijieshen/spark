@@ -34,7 +34,7 @@ class SparkPlanner(val sqlContext: SQLContext) extends SparkStrategies {
       TakeOrderedAndProject ::
       Aggregation(sqlContext) ::
       LeftSemiJoin ::
-      EquiJoinSelection ::
+      EquiJoinSelection(sqlContext) ::
       InMemoryScans ::
       BasicOperators(sqlContext) ::
       BroadcastNestedLoop ::

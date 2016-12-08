@@ -32,3 +32,9 @@ abstract class RowBatchSorterIterator {
 
   override def clone(): AnyRef = super.clone()
 }
+
+object EmptyRowBatchSorterIterator extends RowBatchSorterIterator {
+  override def hasNext(): Boolean = false
+  override def loadNext(): Unit = {}
+  override def currentBatch: RowBatch = null
+}

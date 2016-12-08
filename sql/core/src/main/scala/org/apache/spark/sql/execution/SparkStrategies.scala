@@ -75,7 +75,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
    *     performed. If both sides of the join are eligible to be broadcasted then the
    * - Sort merge: if the matching join keys are sortable.
    */
-  object EquiJoinSelection extends Strategy with PredicateHelper {
+  case class EquiJoinSelection(sqlContext: SQLContext) extends Strategy with PredicateHelper {
+    val vectorizedSMJEnabled = sqlContext.conf.vectorizedSMJEnabled
 
     private[this] def makeBroadcastHashJoin(
         leftKeys: Seq[Expression],
@@ -98,6 +99,12 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
 
       case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, CanBroadcast(left), right) =>
         makeBroadcastHashJoin(leftKeys, rightKeys, left, right, condition, joins.BuildLeft)
+
+      case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, right)
+        if RowOrdering.isOrderable(leftKeys) && vectorizedSMJEnabled =>
+        val mergeJoin =
+          vector.BatchSortMergeJoin(leftKeys, rightKeys, planLater(left), planLater(right))
+        condition.map(Filter(_, mergeJoin)).getOrElse(mergeJoin) :: Nil
 
       case ExtractEquiJoinKeys(Inner, leftKeys, rightKeys, condition, left, right)
         if RowOrdering.isOrderable(leftKeys) =>

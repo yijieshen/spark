@@ -45,8 +45,8 @@ object TestHive
       System.getProperty("spark.sql.test.master", "local[32]"),
       "TestSQLContext",
       new SparkConf()
-        // .set("spark.memory.offHeap.enabled", "true")
-        // .set("spark.memory.offHeap.size", "512mb")
+         .set("spark.memory.offHeap.enabled", "true")
+         .set("spark.memory.offHeap.size", "512mb")
         .set("spark.sql.test", "")
         .set("spark.sql.hive.metastore.barrierPrefixes",
           "org.apache.spark.sql.hive.execution.PairSerDe")

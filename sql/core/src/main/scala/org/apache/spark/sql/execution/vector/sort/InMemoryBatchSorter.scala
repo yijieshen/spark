@@ -165,6 +165,8 @@ case class InMemoryBatchSorter(
   val batchCopier = GenerateBatchCopier.generate(schema, defaultCapacity)
 
   def getSortedIterator(): RowBatchSorterIterator = {
+    if (totalSize == 0) return EmptyRowBatchSorterIterator
+
     sort()
 
     new RowBatchSorterIterator {
