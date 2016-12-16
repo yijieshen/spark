@@ -290,4 +290,104 @@ public class OffColumnVector extends ColumnVector {
   public long getDataNativeAddress() {
     return data;
   }
+
+  @Override
+  public void putIntsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putLongsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putDoublesRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putStringsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putIntsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putLongsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putDoublesRun(ColumnVector src, int srcPos, int destPos, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putStringsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putIntsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putLongsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putDoublesRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putStringsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putIntsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putLongsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putDoublesRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putStringsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putIntsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putLongsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putDoublesRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
+  public void putStringsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    throw new RuntimeException("not supported yet");
+  }
 }

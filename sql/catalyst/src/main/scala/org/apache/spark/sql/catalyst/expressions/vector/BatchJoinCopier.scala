@@ -22,8 +22,8 @@ import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StringType}
 
 abstract class BatchJoinCopier {
-  def copyLeft(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int)
-  def copyRight(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int)
+  def copyLeft(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int): Unit
+  def copyRight(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int): Unit
 }
 
 object GenerateBatchJoinCopier extends CodeGenerator[Seq[Seq[Expression]], BatchJoinCopier] {

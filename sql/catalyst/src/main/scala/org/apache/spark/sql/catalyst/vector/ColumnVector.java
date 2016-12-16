@@ -71,6 +71,32 @@ public abstract class ColumnVector implements Serializable {
   public abstract void putString(int rowId, UTF8String value);
   public abstract void putString(int rowId, String value);
 
+  public abstract void putIntsRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
+  public abstract void putLongsRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
+  public abstract void putDoublesRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
+  public abstract void putStringsRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
+
+  public abstract void putIntsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putLongsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putDoublesRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putStringsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+
+  public abstract void putIntsRun(ColumnVector src, int srcPos, int destPos, int length);
+  public abstract void putLongsRun(ColumnVector src, int srcPos, int destPos, int length);
+  public abstract void putDoublesRun(ColumnVector src, int srcPos, int destPos, int length);
+  public abstract void putStringsRun(ColumnVector src, int srcPos, int destPos, int length);
+
+  public abstract void putIntsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putLongsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putDoublesRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+  public abstract void putStringsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length);
+
+  // TODO: is this necessary?
+  public abstract void putIntsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step);
+  public abstract void putLongsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step);
+  public abstract void putDoublesRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step);
+  public abstract void putStringsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step);
+
   public abstract int getInt(int rowId);
   public abstract long getLong(int rowId);
   public abstract double getDouble(int rowId);

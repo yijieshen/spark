@@ -181,6 +181,250 @@ public class OnColumnVector extends ColumnVector {
     lengths[rowId] = bytes.length;
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  // Ints set
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
+  @Override
+  public void putIntsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    OnColumnVector on = (OnColumnVector) src;
+    int value = on.intVector[srcPos];
+    for (int i = 0; i < repeat; i ++) {
+      intVector[destPos + i] = value;
+    }
+  }
+
+  @Override
+  public void putIntsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < length; i ++) {
+      int value = on.intVector[srcPos + i];
+      for (int j = 0; j < repeat; j ++, destIdx ++) {
+        intVector[destIdx] = value;
+      }
+    }
+  }
+
+  @Override
+  public void putIntsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    for (int i = 0; i < length; i ++) {
+      intVector[destPos + i] = on.intVector[srcPos + i];
+    }
+  }
+
+  @Override
+  public void putIntsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        intVector[destIdx] = on.intVector[srcIdx];
+      }
+    }
+  }
+
+  @Override
+  public void putIntsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        intVector[destIdx] = on.intVector[srcIdx];
+      }
+      destIdx += step;
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  // Longs set
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
+  @Override
+  public void putLongsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    OnColumnVector on = (OnColumnVector) src;
+    long value = on.longVector[srcPos];
+    for (int i = 0; i < repeat; i ++) {
+      longVector[destPos + i] = value;
+    }
+  }
+
+  @Override
+  public void putLongsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < length; i ++) {
+      long value = on.longVector[srcPos + i];
+      for (int j = 0; j < repeat; j ++, destIdx ++) {
+        longVector[destIdx] = value;
+      }
+    }
+  }
+
+  @Override
+  public void putLongsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    for (int i = 0; i < length; i ++) {
+      longVector[destPos + i] = on.longVector[srcPos + i];
+    }
+  }
+
+  @Override
+  public void putLongsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        longVector[destIdx] = on.longVector[srcIdx];
+      }
+    }
+  }
+
+  @Override
+  public void putLongsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        longVector[destIdx] = on.longVector[srcIdx];
+      }
+      destIdx += step;
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  // Doubles set
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
+  @Override
+  public void putDoublesRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    OnColumnVector on = (OnColumnVector) src;
+    double value = on.doubleVector[srcPos];
+    for (int i = 0; i < repeat; i ++) {
+      doubleVector[destPos + i] = value;
+    }
+  }
+
+  @Override
+  public void putDoublesRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < length; i ++) {
+      double value = on.doubleVector[srcPos + i];
+      for (int j = 0; j < repeat; j ++, destIdx ++) {
+        doubleVector[destIdx] = value;
+      }
+    }
+  }
+
+  @Override
+  public void putDoublesRun(ColumnVector src, int srcPos, int destPos, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    for (int i = 0; i < length; i ++) {
+      doubleVector[destPos + i] = on.doubleVector[srcPos + i];
+    }
+  }
+
+  @Override
+  public void putDoublesRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        doubleVector[destIdx] = on.doubleVector[srcIdx];
+      }
+    }
+  }
+
+  @Override
+  public void putDoublesRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        doubleVector[destIdx] = on.doubleVector[srcIdx];
+      }
+      destIdx += step;
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  // Strings set
+  //////////////////////////////////////////////////////////////////////////////////////////////
+
+  @Override
+  public void putStringsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
+    OnColumnVector on = (OnColumnVector) src;
+    byte[] bytes = on.bytesVector[srcPos];
+    int len = on.lengths[srcPos];
+    for (int i = 0; i < repeat; i ++) {
+      bytesVector[destPos + i] = bytes.clone();
+      starts[destPos + i] = 0;
+      lengths[destPos + i] = len;
+    }
+  }
+
+  @Override
+  public void putStringsRepeats(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < length; i ++) {
+      byte[] value = on.bytesVector[srcPos + i];
+      int len = value.length;
+      for (int j = 0; j < repeat; j ++, destIdx ++) {
+        bytesVector[destIdx] = value.clone();
+        starts[destIdx] = 0;
+        lengths[destIdx] = len;
+      }
+    }
+  }
+
+  @Override
+  public void putStringsRun(ColumnVector src, int srcPos, int destPos, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    for (int i = 0; i < length; i ++) {
+      bytesVector[destPos + i] = on.bytesVector[srcPos + i].clone();
+      starts[destPos + i] = 0;
+      lengths[destPos + i] = bytesVector[destPos + i].length;
+    }
+  }
+
+  @Override
+  public void putStringsRuns(ColumnVector src, int srcPos, int destPos, int repeat, int length) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        bytesVector[destIdx] = on.bytesVector[srcIdx].clone();
+        starts[destIdx] = 0;
+        lengths[destIdx] = bytesVector[destIdx].length;
+      }
+    }
+  }
+
+  @Override
+  public void putStringsRunsWithStep(ColumnVector src, int srcPos, int destPos, int repeat, int length, int step) {
+    OnColumnVector on = (OnColumnVector) src;
+    int destIdx = destPos;
+    for (int i = 0; i < repeat; i ++) {
+      int srcIdx = srcPos;
+      for (int j = 0; j < length; j ++, srcIdx ++, destIdx ++) {
+        bytesVector[destIdx] = on.bytesVector[srcIdx].clone();
+        starts[destIdx] = 0;
+        lengths[destIdx] = bytesVector[destIdx].length;
+      }
+      destIdx += step;
+    }
+  }
+
   /** Set a field by reference.
    *
    * @param elementNum index within column vector to set

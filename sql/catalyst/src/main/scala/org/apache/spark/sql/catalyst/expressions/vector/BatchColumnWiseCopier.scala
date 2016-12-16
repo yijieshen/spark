@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.spark.sql.catalyst.expressions.vector
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
@@ -21,23 +22,23 @@ import org.apache.spark.sql.catalyst.expressions.codegen.CodeGenerator
 import org.apache.spark.sql.catalyst.vector.RowBatch
 import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StringType}
 
-abstract class BatchCopier {
-  def copy(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int): Unit
+abstract class BatchColumnWiseCopier {
+  def copy(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int, length: Int): Unit
 }
 
-object GenerateBatchCopier extends CodeGenerator[Seq[Expression], BatchCopier] {
+object GenerateBatchColumnWiseCopier extends CodeGenerator[Seq[Expression], BatchColumnWiseCopier] {
   override protected def canonicalize(in: Seq[Expression]): Seq[Expression] = in
   override protected def bind(
     in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] = in
 
-  def generate(in: Seq[Expression], defaultCapacity: Int): BatchCopier = {
+  def generate(in: Seq[Expression], defaultCapacity: Int): BatchColumnWiseCopier = {
     create(canonicalize(in), defaultCapacity)
   }
 
-  override protected def create(in: Seq[Expression]): BatchCopier =
+  override protected def create(in: Seq[Expression]): BatchColumnWiseCopier =
     create(in, RowBatch.DEFAULT_CAPACITY)
 
-  protected def create(in: Seq[Expression], defaultCapacity: Int): BatchCopier = {
+  protected def create(in: Seq[Expression], defaultCapacity: Int): BatchColumnWiseCopier = {
     val ctx = newCodeGenContext()
     ctx.setBatchCapacity(defaultCapacity)
 
@@ -46,13 +47,13 @@ object GenerateBatchCopier extends CodeGenerator[Seq[Expression], BatchCopier] {
     val columnCopiers = schema.zipWithIndex.map { case (dt, idx) =>
       dt match {
         case IntegerType =>
-          s"to.columns[$idx].putInt(toIdx, from.columns[$idx].getInt(fromIdx));"
+          s"to.columns[$idx].putIntsRun(from.columns[$idx], fromIdx, toIdx, length);"
         case LongType =>
-          s"to.columns[$idx].putLong(toIdx, from.columns[$idx].getLong(fromIdx));"
+          s"to.columns[$idx].putLongsRun(from.columns[$idx], fromIdx, toIdx, length);"
         case DoubleType =>
-          s"to.columns[$idx].putDouble(toIdx, from.columns[$idx].getDouble(fromIdx));"
+          s"to.columns[$idx].putDoublesRun(from.columns[$idx], fromIdx, toIdx, length);"
         case StringType =>
-          s"to.columns[$idx].putString(toIdx, from.columns[$idx].getString(fromIdx));"
+          s"to.columns[$idx].putStringsRun(from.columns[$idx], fromIdx, toIdx, length);"
         case _ =>
           "Not implemented yet"
       }
@@ -60,27 +61,27 @@ object GenerateBatchCopier extends CodeGenerator[Seq[Expression], BatchCopier] {
 
     val code = s"""
       public java.lang.Object generate($exprType[] exprs) {
-        return new SpecificBatchCopier(exprs);
+        return new SpecificBatchColumnWiseCopier(exprs);
       }
 
-      class SpecificBatchCopier extends ${classOf[BatchCopier].getName} {
+      class SpecificBatchColumnWiseCopier extends ${classOf[BatchColumnWiseCopier].getName} {
         private $exprType[] expressions;
         ${declareMutableStates(ctx)}
         ${declareAddedFunctions(ctx)}
 
-        public SpecificBatchCopier($exprType[] expressions) {
+        public SpecificBatchColumnWiseCopier($exprType[] expressions) {
           this.expressions = expressions;
           ${initMutableStates(ctx)}
         }
 
-        public void copy(RowBatch from, int fromIdx, RowBatch to, int toIdx) {
-          to.size += 1;
+        public void copy(RowBatch from, int fromIdx, RowBatch to, int toIdx, int length) {
+          to.size += length;
           $columnCopiers
         }
       }
     """
 
     val c = CodeGenerator.compile(code)
-    c.generate(ctx.references.toArray).asInstanceOf[BatchCopier]
+    c.generate(ctx.references.toArray).asInstanceOf[BatchColumnWiseCopier]
   }
 }
