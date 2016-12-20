@@ -493,13 +493,13 @@ private[spark] object SQLConf {
   )
 
   val VECTORIZE_BATCH_SORT_ENABLED = booleanConf("spark.sql.vectorize.batch.sort.enabled",
-    defaultValue = Some(true),
+    defaultValue = Some(false),
     isPublic = true,
     doc = "When true, SQL query would execute batch sort in vectorized mode when possible"
   )
 
   val VECTORIZE_SMJ_ENABLED = booleanConf("spark.sql.vectorize.smj.enabled",
-    defaultValue = Some(true),
+    defaultValue = Some(false),
     isPublic = true,
     doc = "When true, vectorized sort merge join is preferred if possible"
   )

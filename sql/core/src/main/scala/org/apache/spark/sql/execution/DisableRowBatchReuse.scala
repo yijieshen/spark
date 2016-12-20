@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.execution
 
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.vector.PureBatchSort
+import org.apache.spark.sql.execution.vector.{BatchFilter, PureBatchSort}
 
 private[sql] object DisableRowBatchReuse extends Rule[SparkPlan] {
 
@@ -26,5 +27,15 @@ private[sql] object DisableRowBatchReuse extends Rule[SparkPlan] {
     case operator @ PureBatchSort(_, _, _, _) =>
       operator.child.shouldReuseRowBatch = false
       operator
+  }
+}
+
+private[sql] case class ReplaceFilter(sqlContext: SQLContext) extends Rule[SparkPlan] {
+
+  def vectorizeEnabled: Boolean = sqlContext.conf.vectorizedExecutionEnabled
+
+  override def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
+    case operator @ Filter(condition, child) if vectorizeEnabled && child.outputsRowBatches =>
+      BatchFilter(condition, child)
   }
 }

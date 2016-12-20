@@ -479,6 +479,12 @@ private[sql] case class EnsureRequirements(sqlContext: SQLContext) extends Rule[
                 // If child is an exchange, we replace it with
                 // a new one having targetPartitioning.
                 case Exchange(_, c, _) => Exchange(targetPartitioning, c)
+                case BatchExchange(_, c, _) => BatchExchange(targetPartitioning, c)
+                case BufferedBatchExchange(_, c, _) => BufferedBatchExchange(targetPartitioning, c)
+                case c if vectorizedShuffleEnabled && c.outputsRowBatches =>
+                  BatchExchange(targetPartitioning, c)
+                case c if vectorizedBufferedShuffleEnabled && c.outputsRowBatches =>
+                  BufferedBatchExchange(targetPartitioning, c)
                 case _ => Exchange(targetPartitioning, child)
               }
             }
