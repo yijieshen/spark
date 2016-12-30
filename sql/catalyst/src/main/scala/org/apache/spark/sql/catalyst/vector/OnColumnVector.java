@@ -181,6 +181,16 @@ public class OnColumnVector extends ColumnVector {
     lengths[rowId] = bytes.length;
   }
 
+  @Override
+  public void putNulls(int destPos, int length) {
+    if (length > 0) {
+      noNulls = false;
+    }
+    for (int i = 0; i < length; i ++) {
+      isNull[destPos + i] = true;
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////
   // Ints set
   //////////////////////////////////////////////////////////////////////////////////////////////

@@ -19,7 +19,8 @@ package org.apache.spark.sql.execution.vector
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Ascending, Attribute, Expression, SortOrder}
+import org.apache.spark.sql.catalyst.expressions.{Ascending, Attribute, BindReferences, BoundReference, Expression, SortOrder}
+import org.apache.spark.sql.catalyst.expressions.vector._
 import org.apache.spark.sql.catalyst.plans.{FullOuter, JoinType, LeftOuter, RightOuter}
 import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.catalyst.vector.RowBatch
@@ -47,6 +48,8 @@ case class BatchSortMergeOuterJoin(
   override def canProcessSafeRows: Boolean = false
   override def canProcessUnsafeRows: Boolean = false
 
+  private val defaultBatchCapacity: Int = sqlContext.conf.vectorizedBatchCapacity
+
   override def output: Seq[Attribute] = {
     joinType match {
       case LeftOuter =>
@@ -60,6 +63,11 @@ case class BatchSortMergeOuterJoin(
           s"${getClass.getSimpleName} should not take $x as the JoinType")
     }
   }
+
+  val leftKeyPositions = leftKeys.map(
+    BindReferences.bindReference(_, left.output).asInstanceOf[BoundReference].ordinal)
+  val rightKeyPositions = rightKeys.map(
+    BindReferences.bindReference(_, right.output).asInstanceOf[BoundReference].ordinal)
 
   override def outputPartitioning: Partitioning = joinType match {
     // For left and right outer joins, the output is partitioned by the streamed input's join keys.
@@ -84,8 +92,10 @@ case class BatchSortMergeOuterJoin(
   override def requiredChildDistribution: Seq[Distribution] =
     ClusteredDistribution(leftKeys) :: ClusteredDistribution(rightKeys) :: Nil
 
-  override def requiredChildOrdering: Seq[Seq[SortOrder]] =
-    requiredOrders(leftKeys) :: requiredOrders(rightKeys) :: Nil
+  val leftOrder = requiredOrders(leftKeys)
+  val rightOrder = requiredOrders(rightKeys)
+
+  override def requiredChildOrdering: Seq[Seq[SortOrder]] = leftOrder :: rightOrder :: Nil
 
   private def requiredOrders(keys: Seq[Expression]): Seq[SortOrder] = {
     // This must be ascending in order to agree with the `keyOrdering` defined in `doExecute()`.
@@ -101,7 +111,56 @@ case class BatchSortMergeOuterJoin(
     val numOutputRows = longMetric("numOutputRows")
 
     left.batchExecute().zipPartitions(right.batchExecute()) { (leftIter, rightIter) =>
-      Iterator.empty
+      val streamedBatchComparator = GenerateBatchOrdering.generate(
+        leftOrder, left.output, defaultBatchCapacity)
+      val streamedInterBatchComparator = GenerateInterBatchOrdering.generate(
+        leftOrder, left.output, defaultBatchCapacity)
+      val bufferedBatchComparator = GenerateBatchOrdering.generate(
+        rightOrder, right.output, defaultBatchCapacity)
+      val bufferedInterBatchComparator = GenerateInterBatchOrdering.generate(
+        rightOrder, right.output, defaultBatchCapacity)
+      val interBatchComparator = GenerateInterBatchComparator.generate(
+        leftOrder :: rightOrder :: Nil,
+        left.output :: right.output :: Nil, defaultBatchCapacity)
+
+      val originJoinCopier = GenerateBatchJoinCopier.generate(
+        left.output :: right.output :: Nil, defaultBatchCapacity)
+      val batchJoinCopier = GenerateBatchJoinCWCopier.generate(
+        left.output :: right.output :: Nil, defaultBatchCapacity)
+
+      val streamedCopierToTmp =
+        GenerateBatchColumnWiseCopier.generate(left.output, defaultBatchCapacity)
+      val bufferedCopierToTmp =
+        GenerateBatchColumnWiseCopier.generate(right.output, defaultBatchCapacity)
+
+      val smjScanner = new SortMergeJoinScanner2(
+        RowBatchIterator.fromScala(leftIter),
+        numLeftRows,
+        RowBatchIterator.fromScala(rightIter),
+        numRightRows,
+        numOutputRows,
+        streamedBatchComparator,
+        streamedInterBatchComparator,
+        streamedCopierToTmp,
+        bufferedBatchComparator,
+        bufferedInterBatchComparator,
+        bufferedCopierToTmp,
+        interBatchComparator,
+        originJoinCopier,
+        batchJoinCopier,
+        leftKeyPositions,
+        rightKeyPositions,
+        left.output.map(_.dataType).toArray,
+        right.output.map(_.dataType).toArray,
+        output.map(_.dataType).toArray,
+        defaultBatchCapacity)
+
+      joinType match {
+        case LeftOuter => smjScanner.getLeftOuterJoinedIterator().toScala
+        case RightOuter => smjScanner.getRightOuterJoinedIterator().toScala
+        case x => throw new IllegalArgumentException(
+          s"SortMergeOuterJoin should not take $x as the JoinType")
+      }
     }
   }
 

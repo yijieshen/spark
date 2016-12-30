@@ -292,6 +292,11 @@ public class OffColumnVector extends ColumnVector {
   }
 
   @Override
+  public void putNulls(int destPos, int length) {
+    throw new RuntimeException("not supported yet");
+  }
+
+  @Override
   public void putIntsRepeat(ColumnVector src, int srcPos, int destPos, int repeat) {
     throw new RuntimeException("not supported yet");
   }

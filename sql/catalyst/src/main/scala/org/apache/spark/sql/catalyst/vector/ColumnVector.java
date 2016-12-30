@@ -71,6 +71,8 @@ public abstract class ColumnVector implements Serializable {
   public abstract void putString(int rowId, UTF8String value);
   public abstract void putString(int rowId, String value);
 
+  public abstract void putNulls(int destPos, int length);
+
   public abstract void putIntsRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
   public abstract void putLongsRepeat(ColumnVector src, int srcPos, int destPos, int repeat);
   public abstract void putDoublesRepeat(ColumnVector src, int srcPos, int destPos, int repeat);

@@ -35,6 +35,9 @@ abstract class BatchJoinCWCopier {
   def copyRightRunsWithStep(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int, repeat: Int, length: Int, step: Int): Unit
   def copyRightRepeat(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int, repeat: Int): Unit
   def copyRightRepeats(from: RowBatch, fromIdx: Int, to: RowBatch, toIdx: Int, repeat: Int, length: Int): Unit
+
+  def putLeftNulls(to: RowBatch, toIdx: Int, length: Int): Unit
+  def putRightNulls(to: RowBatch, toIdx: Int, length: Int): Unit
 }
 
 
@@ -130,6 +133,14 @@ object GenerateBatchJoinCWCopier extends CodeGenerator[Seq[Seq[Expression]], Bat
         case _ =>
           "Not implemented yet"
       }
+    }.mkString("\n")
+
+    val leftNullsSetter = leftSchema.zipWithIndex.map { case (dt, idx) =>
+      s"to.columns[$idx].putNulls(toIdx, length);"
+    }.mkString("\n")
+
+    val rightNullsSetter = rightSchema.zipWithIndex.map { case (dt, idx) =>
+      s"to.columns[$idx + $rightOffset].putNulls(toIdx, length);"
     }.mkString("\n")
 
     val rightRunCopier = rightSchema.zipWithIndex.map { case (dt, idx) =>
@@ -261,6 +272,14 @@ object GenerateBatchJoinCWCopier extends CodeGenerator[Seq[Seq[Expression]], Bat
 
         public void copyRightRepeats(RowBatch from, int fromIdx, RowBatch to, int toIdx, int repeat, int length) {
           $rightRepeatsCopier
+        }
+
+        public void putLeftNulls(RowBatch to, int toIdx, int length) {
+          $leftNullsSetter
+        }
+
+        public void putRightNulls(RowBatch to, int toIdx, int length) {
+          $rightNullsSetter
         }
       }
     """

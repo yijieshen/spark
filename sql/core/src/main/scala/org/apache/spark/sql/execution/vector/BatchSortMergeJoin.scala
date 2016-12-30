@@ -24,7 +24,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Ascending, Attribute, BindReferences, BoundReference, Expression, SortOrder}
 import org.apache.spark.sql.catalyst.expressions.vector._
 import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, Partitioning, PartitioningCollection}
-import org.apache.spark.sql.catalyst.vector.RowBatch
+import org.apache.spark.sql.catalyst.vector.{OnColumnVector, RowBatch}
 import org.apache.spark.sql.execution.{BinaryNode, SparkPlan}
 import org.apache.spark.sql.execution.metric.{LongSQLMetric, SQLMetrics}
 import org.apache.spark.sql.types.DataType
@@ -884,7 +884,10 @@ private class SortMergeJoinScanner2(
   private[this] val streamedRuns: Array[Int] = new Array[Int](defaultCapacity)
   private[this] val bufferedRuns: Array[Int] = new Array[Int](defaultCapacity)
 
-  def getJoinedIterator(): RowBatchIterator = new RowBatchIterator {
+  private[this] var comp: Int = 0
+  private[this] var spanning: Boolean = false
+
+  abstract class GenericRowBatchIterator extends RowBatchIterator {
     var rb = RowBatch.create(outputSchema, defaultCapacity)
     var another = RowBatch.create(outputSchema, defaultCapacity)
     var tmpRB: RowBatch = null
@@ -913,7 +916,7 @@ private class SortMergeJoinScanner2(
 
     lazy val streamedRunIsLonger: Boolean = identifyLongerRun()
 
-    private def joiningBothSpan(): Unit = {
+    protected def joiningBothSpan(): Unit = {
       // copy streamed part
       var i = 0; var j = 0; var outputIdx = 0
       while (outputIdx < numRowsInFirstBatch && i < numStreamedInTmp) {
@@ -1014,7 +1017,7 @@ private class SortMergeJoinScanner2(
       }
     }
 
-    private def genOutputLocation(): Unit = {
+    protected def genOutputLocation(): Unit = {
       resultSpanTwoBatches = numOutput > defaultCapacity - rbIdx
       numRowsInFirstBatch =
         if (!resultSpanTwoBatches) numOutput else defaultCapacity - rbIdx
@@ -1022,7 +1025,7 @@ private class SortMergeJoinScanner2(
         if (resultSpanTwoBatches) numOutput - numRowsInFirstBatch else 0
     }
 
-    private def genLeftRunStatistics(): Unit = {
+    protected def genLeftRunStatistics(): Unit = {
       numRepeatInFirstBatch = numRowsInFirstBatch / numStreamed
       incompleteRunInFirstBatch = numRowsInFirstBatch % numStreamed
       incompleteRunInSecondBatch = if (incompleteRunInFirstBatch > 0) {
@@ -1031,7 +1034,7 @@ private class SortMergeJoinScanner2(
       numRepeatInSecondBatch = numRowsInSecondBatch / numStreamed
     }
 
-    private def genRightRunStatistics(): Unit = {
+    protected def genRightRunStatistics(): Unit = {
       numRepeatInFirstBatch = numRowsInFirstBatch / numBuffered
       incompleteRunInFirstBatch = numRowsInFirstBatch % numBuffered
       incompleteRunInSecondBatch = if (incompleteRunInFirstBatch > 0) {
@@ -1040,7 +1043,7 @@ private class SortMergeJoinScanner2(
       numRepeatInSecondBatch = numRowsInSecondBatch / numBuffered
     }
 
-    private def leftRunJoin(): Unit = {
+    protected def leftRunJoin(): Unit = {
       genLeftRunStatistics()
 
       batchJoinCopier.copyLeftRuns(streamedBatch, streamedRowIdx, rb, rbIdx, numRepeatInFirstBatch, numStreamed)
@@ -1063,7 +1066,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyRightRepeats(bufferedBatch, bufferedRowIdx + i, another, j, numStreamed, numBuffered - i)
     }
 
-    private def rightRunJoin(): Unit = {
+    protected def rightRunJoin(): Unit = {
       genRightRunStatistics()
 
       batchJoinCopier.copyRightRuns(bufferedBatch, bufferedRowIdx, rb, rbIdx, numRepeatInFirstBatch, numBuffered)
@@ -1086,7 +1089,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyLeftRepeats(streamedBatch, streamedRowIdx + i, another, j, numBuffered, numStreamed - i)
     }
 
-    private def leftRunJoinTmp(): Unit = {
+    protected def leftRunJoinTmp(): Unit = {
       genLeftRunStatistics()
 
       batchJoinCopier.copyLeftRuns(tmpStreamed, 0, rb, rbIdx, numRepeatInFirstBatch, numStreamed)
@@ -1110,7 +1113,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyRightRepeats(tmpBuffered, i, another, j, numStreamed, numBuffered - i)
     }
 
-    private def rightRunJoinTmp(): Unit = {
+    protected def rightRunJoinTmp(): Unit = {
       genRightRunStatistics()
 
       batchJoinCopier.copyRightRuns(tmpBuffered, 0, rb, rbIdx, numRepeatInFirstBatch, numBuffered)
@@ -1134,7 +1137,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyLeftRepeats(tmpStreamed, i, another, j, numBuffered, numStreamed - i)
     }
 
-    private def leftRunJoiningBufferedAllInTmp(): Unit = {
+    protected def leftRunJoiningBufferedAllInTmp(): Unit = {
       genLeftRunStatistics()
       val numStreamedInCurrent = streamedRuns(0)
 
@@ -1173,7 +1176,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyRightRepeats(tmpBuffered, i, another, j, numStreamed, numBuffered - i)
     }
 
-    private def rightRunJoiningStreamedAllInTmp(): Unit = {
+    protected def rightRunJoiningStreamedAllInTmp(): Unit = {
       genRightRunStatistics()
       val numBufferedInCurrent = bufferedRuns(0)
 
@@ -1212,7 +1215,7 @@ private class SortMergeJoinScanner2(
       batchJoinCopier.copyLeftRepeats(tmpStreamed, i, another, j, numBuffered, numStreamed - i)
     }
 
-    private def leftRunJoiningStreamedAllInTmp(): Unit = {
+    protected def leftRunJoiningStreamedAllInTmp(): Unit = {
       genLeftRunStatistics()
       val numBufferedInCurrent = bufferedRuns(0)
 
@@ -1265,7 +1268,7 @@ private class SortMergeJoinScanner2(
       }
     }
 
-    private def rightRunJoiningBufferedAllInTmp(): Unit = {
+    protected def rightRunJoiningBufferedAllInTmp(): Unit = {
       genRightRunStatistics()
       val numStreamedInCurrent = streamedRuns(0)
 
@@ -1318,6 +1321,10 @@ private class SortMergeJoinScanner2(
       }
     }
 
+    override def getBatch: RowBatch = rb
+  }
+
+  def getJoinedIterator(): RowBatchIterator = new GenericRowBatchIterator {
     override def advanceNext(): Boolean = {
       if (resultSpanTwoBatches) {
         tmpRB = rb
@@ -1474,8 +1481,222 @@ private class SortMergeJoinScanner2(
       rb.size = rbIdx
       if (rbIdx == 0) false else true
     }
+  }
 
-    override def getBatch: RowBatch = rb
+  def getLeftOuterJoinedIterator(): RowBatchIterator = new GenericRowBatchIterator {
+    private def leftRunRightNull(): Unit = {
+      batchJoinCopier.copyLeftRun(streamedBatch, streamedRowIdx, rb, rbIdx, numRowsInFirstBatch)
+      batchJoinCopier.copyLeftRun(streamedBatch, streamedRowIdx + numRowsInFirstBatch, another, 0, numRowsInSecondBatch)
+      batchJoinCopier.putRightNulls(rb, rbIdx, numRowsInFirstBatch)
+      batchJoinCopier.putRightNulls(another, 0, numRowsInSecondBatch)
+    }
+
+    override def advanceNext(): Boolean = {
+      if (resultSpanTwoBatches) {
+        tmpRB = rb
+        rb = another
+        rbIdx = anotherIdx
+        another = tmpRB
+        another.reset()
+        anotherIdx = 0
+        resultSpanTwoBatches = false
+      } else {
+        rb.reset()
+        rbIdx = 0
+      }
+
+      findMatches = findNextLeftOuterJoinRows()
+      while (rbIdx < rb.capacity && findMatches) {
+        if (comp == 0) {
+          // copy rows into output
+          numStreamed = streamedRuns(streamedRowIdx)
+          numBuffered = bufferedRuns(bufferedRowIdx)
+          numOutput = numStreamed * numBuffered
+          genOutputLocation()
+
+          // runs inside streamed and buffered
+          if (numStreamed + streamedRowIdx < streamedSize &&
+            numBuffered + bufferedRowIdx < bufferedSize) {
+
+            leftRunJoin()
+            advancedStreamed()
+            advancedBuffered()
+
+          } else if (numStreamed + streamedRowIdx < streamedSize) { // buffered span
+
+            leftRunJoin()
+            advancedBuffered()
+            spanning = true
+
+          } else if (numBuffered + bufferedRowIdx < bufferedSize) { // streamed span
+
+            leftRunJoin()
+            advancedStreamed()
+
+          } else { // both span
+            // copy last key to tmp
+            tmpStreamed.reset()
+            streamedCopierToTmp.copy(streamedBatch, streamedRowIdx, tmpStreamed, 0, numStreamed)
+            tmpBuffered.reset()
+            bufferedCopierToTmp.copy(bufferedBatch, bufferedRowIdx, tmpBuffered, 0, numBuffered)
+
+            numStreamedInTmp = tmpStreamed.size
+            val moreStreamedRows = advancedStreamed()
+            numBufferedInTmp = tmpBuffered.size
+            val moreBufferedRows = advancedBuffered()
+
+            val streamedKeyContinues = if (moreStreamedRows) {
+              streamedInterBatchComparator.compare(tmpStreamed, 0, streamedBatch, 0) == 0
+            } else false
+
+            val bufferedKeyContinues = if (moreBufferedRows) {
+              bufferedInterBatchComparator.compare(tmpBuffered, 0, bufferedBatch, 0) == 0
+            } else false
+
+            numStreamed =
+              (if (streamedKeyContinues) streamedRuns(streamedRowIdx) else 0) + numStreamedInTmp
+            numBuffered =
+              (if (bufferedKeyContinues) bufferedRuns(bufferedRowIdx) else 0) + numBufferedInTmp
+            numOutput = numStreamed * numBuffered
+            genOutputLocation()
+
+            if (!streamedKeyContinues && !bufferedKeyContinues) {
+              leftRunJoinTmp()
+            } else if (streamedKeyContinues && !bufferedKeyContinues) {
+              leftRunJoiningBufferedAllInTmp()
+            } else if (!streamedKeyContinues && bufferedKeyContinues) {
+              leftRunJoiningStreamedAllInTmp()
+            } else {
+              joiningBothSpan()
+            }
+          }
+
+        } else { // comp != 0, no match for current streamed key
+          numStreamed = streamedRuns(streamedRowIdx)
+          numOutput = numStreamed
+          genOutputLocation()
+          leftRunRightNull()
+          advancedStreamed()
+        }
+
+        rbIdx += numRowsInFirstBatch
+        anotherIdx += numRowsInSecondBatch
+
+        findMatches = findNextLeftOuterJoinRows()
+      }
+      numOutputRows += rbIdx
+      rb.size = rbIdx
+      if (rbIdx == 0) false else true
+    }
+  }
+
+  def getRightOuterJoinedIterator(): RowBatchIterator = new GenericRowBatchIterator {
+    private def LeftNullRightRun(): Unit = {
+      batchJoinCopier.putLeftNulls(rb, rbIdx, numRowsInFirstBatch)
+      batchJoinCopier.putLeftNulls(another, 0, numRowsInSecondBatch)
+      batchJoinCopier.copyRightRun(bufferedBatch, bufferedRowIdx, rb, rbIdx, numRowsInFirstBatch)
+      batchJoinCopier.copyRightRun(bufferedBatch, bufferedRowIdx + numRowsInFirstBatch, another, 0, numRowsInSecondBatch)
+    }
+
+    override def advanceNext(): Boolean = {
+      if (resultSpanTwoBatches) {
+        tmpRB = rb
+        rb = another
+        rbIdx = anotherIdx
+        another = tmpRB
+        another.reset()
+        anotherIdx = 0
+        resultSpanTwoBatches = false
+      } else {
+        rb.reset()
+        rbIdx = 0
+      }
+
+      findMatches = findNextRightOuterJoinRows()
+      while (rbIdx < rb.capacity && findMatches) {
+        if (comp == 0) {
+          // copy rows into output
+          numStreamed = streamedRuns(streamedRowIdx)
+          numBuffered = bufferedRuns(bufferedRowIdx)
+          numOutput = numStreamed * numBuffered
+          genOutputLocation()
+
+          // runs inside streamed and buffered
+          if (numStreamed + streamedRowIdx < streamedSize &&
+            numBuffered + bufferedRowIdx < bufferedSize) {
+
+            rightRunJoin()
+            advancedStreamed()
+            advancedBuffered()
+
+          } else if (numStreamed + streamedRowIdx < streamedSize) { // buffered span
+
+            rightRunJoin()
+            advancedBuffered()
+
+          } else if (numBuffered + bufferedRowIdx < bufferedSize) { // streamed span
+
+            rightRunJoin()
+            advancedStreamed()
+            spanning = true
+
+          } else { // both span
+            // copy last key to tmp
+            tmpStreamed.reset()
+            streamedCopierToTmp.copy(streamedBatch, streamedRowIdx, tmpStreamed, 0, numStreamed)
+            tmpBuffered.reset()
+            bufferedCopierToTmp.copy(bufferedBatch, bufferedRowIdx, tmpBuffered, 0, numBuffered)
+
+            numStreamedInTmp = tmpStreamed.size
+            val moreStreamedRows = advancedStreamed()
+            numBufferedInTmp = tmpBuffered.size
+            val moreBufferedRows = advancedBuffered()
+
+            val streamedKeyContinues = if (moreStreamedRows) {
+              streamedInterBatchComparator.compare(tmpStreamed, 0, streamedBatch, 0) == 0
+            } else false
+
+            val bufferedKeyContinues = if (moreBufferedRows) {
+              bufferedInterBatchComparator.compare(tmpBuffered, 0, bufferedBatch, 0) == 0
+            } else false
+
+            numStreamed =
+              (if (streamedKeyContinues) streamedRuns(streamedRowIdx) else 0) + numStreamedInTmp
+            numBuffered =
+              (if (bufferedKeyContinues) bufferedRuns(bufferedRowIdx) else 0) + numBufferedInTmp
+            numOutput = numStreamed * numBuffered
+            genOutputLocation()
+
+            if (!streamedKeyContinues && !bufferedKeyContinues) {
+              rightRunJoinTmp()
+            } else if (streamedKeyContinues && !bufferedKeyContinues) {
+              rightRunJoiningBufferedAllInTmp()
+            } else if (!streamedKeyContinues && bufferedKeyContinues) {
+              rightRunJoiningStreamedAllInTmp()
+            } else {
+              joiningBothSpan()
+            }
+          }
+
+        } else { // comp != 0, no match for current buffered key
+          numBuffered = bufferedRuns(bufferedRowIdx)
+          numOutput = numBuffered
+          // System.err.println(numBuffered)
+          // System.err.println(bufferedBatch.columns(0).asInstanceOf[OnColumnVector].intVector(bufferedRowIdx))
+          genOutputLocation()
+          LeftNullRightRun()
+          advancedBuffered()
+        }
+
+        rbIdx += numRowsInFirstBatch
+        anotherIdx += numRowsInSecondBatch
+
+        findMatches = findNextRightOuterJoinRows()
+      }
+      numOutputRows += rbIdx
+      rb.size = rbIdx
+      if (rbIdx == 0) false else true
+    }
   }
 
   // scalastyle:on
@@ -1562,15 +1783,54 @@ private class SortMergeJoinScanner2(
     }
   }
 
-  def findNextOuterJoinRows(): Boolean = {
+  def findNextLeftOuterJoinRows(): Boolean = {
     if (streamedBatch == null) {
       false
     } else {
-      var comp = 0
+      comp = 0
+      if (bufferedBatch == null) {
+        comp = -1
+        return true
+      }
       do {
         comp = interBatchComparator.compare(
           streamedBatch, streamedRowIdx, bufferedBatch, bufferedRowIdx)
+        if (comp < 0 && spanning) {
+          spanning = false
+          advancedStreamed()
+          if (streamedBatch == null) {
+            return false
+          }
+          comp = interBatchComparator.compare(
+            streamedBatch, streamedRowIdx, bufferedBatch, bufferedRowIdx)
+        }
       } while (comp > 0 && advancedBuffered())
+      true
+    }
+  }
+
+  def findNextRightOuterJoinRows(): Boolean = {
+    if (bufferedBatch == null) {
+      false
+    } else {
+      comp = 0
+      if (streamedBatch == null) {
+        comp = 1
+        return true
+      }
+      do {
+        comp = interBatchComparator.compare(
+          streamedBatch, streamedRowIdx, bufferedBatch, bufferedRowIdx)
+        if (comp > 0 && spanning) {
+          spanning = false
+          advancedBuffered()
+          if (bufferedBatch == null) {
+            return false
+          }
+          comp = interBatchComparator.compare(
+            streamedBatch, streamedRowIdx, bufferedBatch, bufferedRowIdx)
+        }
+      } while (comp < 0 && advancedStreamed())
       true
     }
   }

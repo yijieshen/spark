@@ -395,7 +395,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
 
   test("Query 13") {
     withSQLConf(
-      SQLConf.VECTORIZE_ENABLED.key -> "false",
+      SQLConf.VECTORIZE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
       SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
@@ -412,7 +412,7 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
           .sort('custdist.desc, 'c_count.desc)
 
       result.explain(true)
-      result.show(5000, false)
+      result.show(false)
     }
   }
 
@@ -673,6 +673,34 @@ class TPCHSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
           .groupBy('cntrycode)
           .agg(count('c_acctbal), sum('c_acctbal))
           .sort('cntrycode)
+
+      result.explain(true)
+      result.show(false)
+    }
+  }
+
+  test("Outer Join") {
+    withSQLConf(
+      SQLConf.VECTORIZE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_AGG_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_SHUFFLE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_SORT_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_BUFFERED_SHUFFLE_ENABLED.key -> "true",
+      SQLConf.VECTORIZE_SMJ_ENABLED.key -> "true",
+      SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1") {
+      import sqlContext.implicits._
+
+      lazy val cust =
+        customer.select('c_acctbal, 'c_custkey, 'c_phone.substr(0, 2).as("cntrycode"))
+          .filter('cntrycode.isin("13", "31", "23", "29", "30", "18", "17"))
+
+      lazy val avg_customer = cust.filter('c_acctbal > 0.0).agg(avg('c_acctbal).as("avg_acctbal"))
+
+      val result =
+        orders.select('o_custkey).distinct()
+          .join(cust, 'o_custkey === 'c_custkey, "right_outer")
+          // .filter('o_custkey.isNull)
+          .agg(count(lit(1)))
 
       result.explain(true)
       result.show(false)
